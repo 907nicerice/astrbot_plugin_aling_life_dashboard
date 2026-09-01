@@ -1,0 +1,5 @@
+name: astrbot_plugin_aling_life_dashboard
+desc: Read-only WebUI dashboard for shared_life_context, qzone_life_bridge, qzone_auto_like, and shared_life_memory.
+version: 0.1.1
+author: Codex
+repo: https://github.com/907nicerice/astrbot_plugin_aling_life_dashboard

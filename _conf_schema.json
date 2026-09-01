@@ -1,0 +1,55 @@
+{
+  "dashboard_enabled": {
+    "type": "bool",
+    "description": "是否启用只读 WebUI Dashboard。",
+    "default": false,
+    "hint": "默认关闭。启用前必须设置 dashboard_password。"
+  },
+  "bind_host": {
+    "type": "string",
+    "description": "WebUI 监听地址。",
+    "default": "127.0.0.1",
+    "hint": "默认 127.0.0.1 用于 SSH 隧道。若改为 0.0.0.0，必须限制云安全组来源 IP。"
+  },
+  "bind_port": {
+    "type": "int",
+    "description": "WebUI 监听端口。",
+    "default": 7842
+  },
+  "dashboard_password": {
+    "type": "string",
+    "description": "WebUI 登录密码。",
+    "default": "",
+    "hint": "为空时 WebUI 不启动。密码不会在页面或 API 中回显。"
+  },
+  "refresh_interval_seconds": {
+    "type": "int",
+    "description": "前端自动刷新间隔，单位秒。",
+    "default": 10
+  },
+  "timezone": {
+    "type": "string",
+    "description": "Dashboard 计算时间窗口和倒计时时使用的时区。",
+    "default": "Asia/Shanghai"
+  },
+  "show_memory": {
+    "type": "bool",
+    "description": "是否显示 shared_life_memory 摘要。",
+    "default": true
+  },
+  "history_limit": {
+    "type": "int",
+    "description": "最近历史显示条数。",
+    "default": 20
+  },
+  "port_conflict_retry": {
+    "type": "bool",
+    "description": "端口被占用时是否尝试 bind_port +1 到 +5。",
+    "default": true
+  },
+  "health_cache_seconds": {
+    "type": "int",
+    "description": "健康状态读取缓存秒数，避免频繁扫描运行时对象。",
+    "default": 5
+  }
+}

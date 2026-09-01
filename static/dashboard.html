@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aling Life Dashboard</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Aling Life Dashboard</h1>
+      <p id="last-refresh">Last refresh: -</p>
+    </div>
+    <form action="/logout" method="post">
+      <button class="ghost-button" type="submit">Logout</button>
+    </form>
+  </header>
+
+  <main>
+    <section id="warning-strip" class="warning-strip hidden"></section>
+
+    <section class="grid status-grid" id="status-cards"></section>
+
+    <section class="grid two">
+      <article class="card">
+        <h2>今日 daily_plan</h2>
+        <div id="daily-plan" class="plan-grid"></div>
+        <dl class="kv" id="daily-meta"></dl>
+      </article>
+
+      <article class="card">
+        <h2>当前 period 状态</h2>
+        <div id="period-warning" class="inline-warning hidden"></div>
+        <dl class="kv" id="period-state"></dl>
+      </article>
+    </section>
+
+    <section class="section-title">
+      <h2>连续性系统 / Continuity Stack</h2>
+      <p>SLC 是“今天阿绫在过什么日子”，Inner Continuity 是“刚刚几轮聊完后她还挂着什么”，Aling Memory 是“更长期的小记忆和 24-72h 话题残影”。</p>
+    </section>
+
+    <section class="grid continuity-grid">
+      <article class="card span-two">
+        <div class="card-heading">
+          <h2>连续性系统协作关系</h2>
+          <span id="continuity-overall-badge" class="badge unknown">unknown</span>
+        </div>
+        <p class="note" id="continuity-summary"></p>
+        <div id="continuity-layers" class="layer-list"></div>
+        <div class="table-wrap">
+          <table class="matrix-table">
+            <thead>
+              <tr>
+                <th>模块</th>
+                <th>负责什么</th>
+                <th>读取谁</th>
+                <th>写入谁</th>
+                <th>注入块</th>
+                <th>风险</th>
+              </tr>
+            </thead>
+            <tbody id="continuity-matrix"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-heading">
+          <h2>shared_life_context</h2>
+          <span id="slc-badge" class="badge unknown">unknown</span>
+        </div>
+        <p class="note">SLC 是阿绫今日生活舞台，不是用户记忆库。</p>
+        <dl class="kv" id="continuity-slc"></dl>
+      </article>
+
+      <article class="card">
+        <div class="card-heading">
+          <h2>Inner Continuity / 短期内在连续性</h2>
+          <span id="inner-badge" class="badge unknown">unknown</span>
+        </div>
+        <p class="note">只保存短期心理余波；可以只读 SLC 摘要，但不会写入 SLC 或 aling_memory。</p>
+        <dl class="kv" id="inner-config"></dl>
+        <dl class="kv" id="inner-metrics"></dl>
+        <div id="inner-warnings" class="mini-list"></div>
+      </article>
+
+      <article class="card">
+        <div class="card-heading">
+          <h2>Aling Memory / 长期小记忆</h2>
+          <span id="aling-memory-badge" class="badge unknown">unknown</span>
+        </div>
+        <p class="note">负责长期小记忆、User Life Mirror 和 24-72h recent_trace；不应记录 Open Loop 待办，也不写入 SLC。</p>
+        <dl class="kv" id="aling-memory-config"></dl>
+        <dl class="kv" id="aling-memory-metrics"></dl>
+        <div id="aling-memory-warnings" class="mini-list"></div>
+      </article>
+
+      <article class="card">
+        <div class="card-heading">
+          <h2>协作健康检查</h2>
+          <span id="continuity-health-badge" class="badge unknown">unknown</span>
+        </div>
+        <p class="note" id="continuity-health-summary"></p>
+        <div id="continuity-health-checks" class="check-list"></div>
+      </article>
+    </section>
+
+    <section class="section-title">
+      <h2>连续性内容面板</h2>
+      <p>只读查看 Inner Continuity 和 Aling Memory 当前保存的内容。</p>
+    </section>
+
+    <section class="content-panel">
+      <div class="content-main">
+        <article class="card">
+          <div class="card-heading">
+            <h2>Inner Continuity / 短期内在连续性</h2>
+            <span id="inner-content-badge" class="badge unknown">unknown</span>
+          </div>
+          <div class="toolbar">
+            <button id="refresh-continuity-content" class="ghost-button" type="button">刷新连续性内容</button>
+          </div>
+          <div id="inner-content-diagnostics" class="mini-list"></div>
+          <div id="inner-content-list" class="content-list"></div>
+        </article>
+
+        <article class="card">
+          <div class="card-heading">
+            <h2>Aling Memory / 长期小记忆</h2>
+            <span id="memory-content-badge" class="badge unknown">unknown</span>
+          </div>
+          <div class="toolbar">
+            <input id="memory-search" class="search-input" type="search" placeholder="搜索记忆 / recent_trace / summary">
+          </div>
+          <div id="memory-content-diagnostics" class="mini-list"></div>
+          <div class="memory-sections">
+            <section>
+              <h3>记忆库 memory_store</h3>
+              <div id="memory-store-content" class="content-list"></div>
+            </section>
+            <section>
+              <h3>User Life Mirror</h3>
+              <div id="mirror-content" class="content-list"></div>
+            </section>
+            <section>
+              <h3>最近上下文摘要 context_summaries</h3>
+              <div id="summary-content" class="content-list"></div>
+            </section>
+            <section>
+              <h3>recent_trace 24-72h 话题残影</h3>
+              <p class="note">recent_trace 用来在上下文截断后保留最近一两天仍可能自然接上的话题，不等于长期记忆。</p>
+              <div id="recent-trace-content" class="content-list"></div>
+            </section>
+            <section>
+              <h3>flashback_state 闪回状态</h3>
+              <div id="flashback-content" class="content-list"></div>
+            </section>
+          </div>
+        </article>
+
+        <article class="card span-two content-diagnostics-card">
+          <h2>读取诊断</h2>
+          <div id="continuity-read-diagnostics" class="content-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <h2>刷新倒计时</h2>
+        <dl class="kv" id="refresh-countdown"></dl>
+      </article>
+
+      <article class="card">
+        <h2>随机触发预测</h2>
+        <dl class="kv" id="trigger-prediction"></dl>
+      </article>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <h2>QQ空间 bridge</h2>
+        <dl class="kv" id="bridge-state"></dl>
+      </article>
+
+      <article class="card">
+        <h2>发送链路健康</h2>
+        <dl class="kv" id="send-health"></dl>
+      </article>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <h2>最近历史</h2>
+        <div id="history-list" class="history-list"></div>
+      </article>
+
+      <article class="card">
+        <h2>shared_life_memory</h2>
+        <dl class="kv" id="memory-summary"></dl>
+        <div id="memory-traces" class="trace-list"></div>
+      </article>
+    </section>
+  </main>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
