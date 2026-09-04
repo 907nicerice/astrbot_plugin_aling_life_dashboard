@@ -1,7 +1,7 @@
 {
   "dashboard_enabled": {
     "type": "bool",
-    "description": "是否启用只读 WebUI Dashboard。",
+    "description": "是否启用 WebUI Dashboard。",
     "default": false,
     "hint": "默认关闭。启用前必须设置 dashboard_password。"
   },
@@ -51,5 +51,11 @@
     "type": "int",
     "description": "健康状态读取缓存秒数，避免频繁扫描运行时对象。",
     "default": 5
+  },
+  "memory_edit_enabled": {
+    "type": "bool",
+    "description": "允许在 Dashboard 中新增、修改、归档和恢复 aling_memory 长期记忆。",
+    "default": false,
+    "hint": "默认关闭。开启后仍需 Dashboard 密码登录；不会提供永久删除，也不会修改 SLC、QQ 空间或 AstrBot 配置。"
   }
 }

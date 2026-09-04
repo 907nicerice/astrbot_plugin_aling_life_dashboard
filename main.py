@@ -64,7 +64,7 @@ except ImportError:  # pragma: no cover - fallback for file-based plugin loaders
 
 
 PLUGIN_NAME = "astrbot_plugin_aling_life_dashboard"
-PLUGIN_VERSION = "0.1.1"
+PLUGIN_VERSION = "0.2.0"
 DEFAULT_CONFIG: dict[str, Any] = {
     "dashboard_enabled": False,
     "bind_host": "127.0.0.1",
@@ -76,6 +76,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "history_limit": 20,
     "port_conflict_retry": True,
     "health_cache_seconds": 5,
+    "memory_edit_enabled": False,
 }
 
 ON_ASTRBOT_LOADED = getattr(filter, "on_astrbot_loaded", lambda **_kwargs: (lambda func: func))
@@ -123,7 +124,7 @@ def _parse_int(value: Any, default: int, minimum: int | None = None) -> int:
 @register(
     PLUGIN_NAME,
     "Codex",
-    "Read-only WebUI dashboard for shared_life_context and qzone_life_bridge.",
+    "Aling 状态、连续性诊断与可选记忆管理 WebUI。",
     PLUGIN_VERSION,
 )
 class AlingLifeDashboardPlugin(Star):
@@ -190,6 +191,7 @@ class AlingLifeDashboardPlugin(Star):
         settings["history_limit"] = _parse_int(settings.get("history_limit"), 20, minimum=1)
         settings["port_conflict_retry"] = _parse_bool(settings.get("port_conflict_retry"), True)
         settings["health_cache_seconds"] = _parse_int(settings.get("health_cache_seconds"), 5, minimum=1)
+        settings["memory_edit_enabled"] = _parse_bool(settings.get("memory_edit_enabled"), False)
         return settings
 
     def _config_get(self, key: str, default: Any = None) -> Any:

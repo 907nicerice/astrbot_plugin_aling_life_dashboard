@@ -3,208 +3,167 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Aling Life Dashboard</title>
+  <title>阿绫控制台</title>
   <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <h1>Aling Life Dashboard</h1>
-      <p id="last-refresh">Last refresh: -</p>
-    </div>
-    <form action="/logout" method="post">
-      <button class="ghost-button" type="submit">Logout</button>
-    </form>
-  </header>
-
-  <main>
-    <section id="warning-strip" class="warning-strip hidden"></section>
-
-    <section class="grid status-grid" id="status-cards"></section>
-
-    <section class="grid two">
-      <article class="card">
-        <h2>今日 daily_plan</h2>
-        <div id="daily-plan" class="plan-grid"></div>
-        <dl class="kv" id="daily-meta"></dl>
-      </article>
-
-      <article class="card">
-        <h2>当前 period 状态</h2>
-        <div id="period-warning" class="inline-warning hidden"></div>
-        <dl class="kv" id="period-state"></dl>
-      </article>
-    </section>
-
-    <section class="section-title">
-      <h2>连续性系统 / Continuity Stack</h2>
-      <p>SLC 是“今天阿绫在过什么日子”，Inner Continuity 是“刚刚几轮聊完后她还挂着什么”，Aling Memory 是“更长期的小记忆和 24-72h 话题残影”。</p>
-    </section>
-
-    <section class="grid continuity-grid">
-      <article class="card span-two">
-        <div class="card-heading">
-          <h2>连续性系统协作关系</h2>
-          <span id="continuity-overall-badge" class="badge unknown">unknown</span>
-        </div>
-        <p class="note" id="continuity-summary"></p>
-        <div id="continuity-layers" class="layer-list"></div>
-        <div class="table-wrap">
-          <table class="matrix-table">
-            <thead>
-              <tr>
-                <th>模块</th>
-                <th>负责什么</th>
-                <th>读取谁</th>
-                <th>写入谁</th>
-                <th>注入块</th>
-                <th>风险</th>
-              </tr>
-            </thead>
-            <tbody id="continuity-matrix"></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="card">
-        <div class="card-heading">
-          <h2>shared_life_context</h2>
-          <span id="slc-badge" class="badge unknown">unknown</span>
-        </div>
-        <p class="note">SLC 是阿绫今日生活舞台，不是用户记忆库。</p>
-        <dl class="kv" id="continuity-slc"></dl>
-      </article>
-
-      <article class="card">
-        <div class="card-heading">
-          <h2>Inner Continuity / 短期内在连续性</h2>
-          <span id="inner-badge" class="badge unknown">unknown</span>
-        </div>
-        <p class="note">只保存短期心理余波；可以只读 SLC 摘要，但不会写入 SLC 或 aling_memory。</p>
-        <dl class="kv" id="inner-config"></dl>
-        <dl class="kv" id="inner-metrics"></dl>
-        <div id="inner-warnings" class="mini-list"></div>
-      </article>
-
-      <article class="card">
-        <div class="card-heading">
-          <h2>Aling Memory / 长期小记忆</h2>
-          <span id="aling-memory-badge" class="badge unknown">unknown</span>
-        </div>
-        <p class="note">负责长期小记忆、User Life Mirror 和 24-72h recent_trace；不应记录 Open Loop 待办，也不写入 SLC。</p>
-        <dl class="kv" id="aling-memory-config"></dl>
-        <dl class="kv" id="aling-memory-metrics"></dl>
-        <div id="aling-memory-warnings" class="mini-list"></div>
-      </article>
-
-      <article class="card">
-        <div class="card-heading">
-          <h2>协作健康检查</h2>
-          <span id="continuity-health-badge" class="badge unknown">unknown</span>
-        </div>
-        <p class="note" id="continuity-health-summary"></p>
-        <div id="continuity-health-checks" class="check-list"></div>
-      </article>
-    </section>
-
-    <section class="section-title">
-      <h2>连续性内容面板</h2>
-      <p>只读查看 Inner Continuity 和 Aling Memory 当前保存的内容。</p>
-    </section>
-
-    <section class="content-panel">
-      <div class="content-main">
-        <article class="card">
-          <div class="card-heading">
-            <h2>Inner Continuity / 短期内在连续性</h2>
-            <span id="inner-content-badge" class="badge unknown">unknown</span>
-          </div>
-          <div class="toolbar">
-            <button id="refresh-continuity-content" class="ghost-button" type="button">刷新连续性内容</button>
-          </div>
-          <div id="inner-content-diagnostics" class="mini-list"></div>
-          <div id="inner-content-list" class="content-list"></div>
-        </article>
-
-        <article class="card">
-          <div class="card-heading">
-            <h2>Aling Memory / 长期小记忆</h2>
-            <span id="memory-content-badge" class="badge unknown">unknown</span>
-          </div>
-          <div class="toolbar">
-            <input id="memory-search" class="search-input" type="search" placeholder="搜索记忆 / recent_trace / summary">
-          </div>
-          <div id="memory-content-diagnostics" class="mini-list"></div>
-          <div class="memory-sections">
-            <section>
-              <h3>记忆库 memory_store</h3>
-              <div id="memory-store-content" class="content-list"></div>
-            </section>
-            <section>
-              <h3>User Life Mirror</h3>
-              <div id="mirror-content" class="content-list"></div>
-            </section>
-            <section>
-              <h3>最近上下文摘要 context_summaries</h3>
-              <div id="summary-content" class="content-list"></div>
-            </section>
-            <section>
-              <h3>recent_trace 24-72h 话题残影</h3>
-              <p class="note">recent_trace 用来在上下文截断后保留最近一两天仍可能自然接上的话题，不等于长期记忆。</p>
-              <div id="recent-trace-content" class="content-list"></div>
-            </section>
-            <section>
-              <h3>flashback_state 闪回状态</h3>
-              <div id="flashback-content" class="content-list"></div>
-            </section>
-          </div>
-        </article>
-
-        <article class="card span-two content-diagnostics-card">
-          <h2>读取诊断</h2>
-          <div id="continuity-read-diagnostics" class="content-list"></div>
-        </article>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Dashboard 导航">
+      <div class="brand">
+        <span class="brand-mark">绫</span>
+        <div><strong>阿绫控制台</strong><small>Aling Dashboard</small></div>
       </div>
-    </section>
+      <nav class="side-nav">
+        <a class="active" href="#overview"><span class="nav-mark">⌂</span>系统概览</a>
+        <a href="#life"><span class="nav-mark">⌁</span>今日状态</a>
+        <a href="#memory-manager"><span class="nav-mark">◉</span>记忆管理</a>
+        <a href="#continuity"><span class="nav-mark">◷</span>连续性状态</a>
+        <a href="#qzone"><span class="nav-mark">☆</span>QQ 空间</a>
+        <a href="#diagnostics"><span class="nav-mark">◇</span>诊断信息</a>
+      </nav>
+      <div class="sidebar-note">
+        <span class="status-dot"></span>
+        <div><strong>安全访问</strong><small>敏感字段已脱敏</small></div>
+      </div>
+    </aside>
 
-    <section class="grid two">
-      <article class="card">
-        <h2>刷新倒计时</h2>
-        <dl class="kv" id="refresh-countdown"></dl>
-      </article>
+    <div class="workspace">
+      <header class="topbar">
+        <div><h1>阿绫控制台</h1><p id="last-refresh">最近刷新：-</p></div>
+        <div class="topbar-actions">
+          <span class="system-health"><span class="status-dot"></span>系统在线</span>
+          <button id="refresh-dashboard" class="secondary-button" type="button">刷新</button>
+          <form action="/logout" method="post"><button class="ghost-button" type="submit">退出</button></form>
+        </div>
+      </header>
 
-      <article class="card">
-        <h2>随机触发预测</h2>
-        <dl class="kv" id="trigger-prediction"></dl>
-      </article>
-    </section>
+      <main>
+        <section id="warning-strip" class="warning-strip hidden"></section>
 
-    <section class="grid two">
-      <article class="card">
-        <h2>QQ空间 bridge</h2>
-        <dl class="kv" id="bridge-state"></dl>
-      </article>
+        <section id="overview" class="page-section">
+          <div class="section-heading"><div><span class="eyebrow">Overview</span><h2>系统概览</h2></div><p>关键运行状态与安全模式</p></div>
+          <div class="grid status-grid" id="status-cards"></div>
+        </section>
 
-      <article class="card">
-        <h2>发送链路健康</h2>
-        <dl class="kv" id="send-health"></dl>
-      </article>
-    </section>
+        <section id="life" class="page-section">
+          <div class="section-heading"><div><span class="eyebrow">Today</span><h2>今日状态</h2></div><p>阿绫今天的生活舞台与当前状态</p></div>
+          <div class="grid two">
+            <article class="card"><h3>今日 daily_plan</h3><div id="daily-plan" class="plan-grid"></div><dl class="kv" id="daily-meta"></dl></article>
+            <article class="card"><h3>当前 period 状态</h3><div id="period-warning" class="inline-warning hidden"></div><dl class="kv" id="period-state"></dl></article>
+          </div>
+        </section>
 
-    <section class="grid two">
-      <article class="card">
-        <h2>最近历史</h2>
-        <div id="history-list" class="history-list"></div>
-      </article>
+        <section id="memory-manager" class="page-section memory-manager-section">
+          <div class="section-heading"><div><span class="eyebrow">Memory</span><h2>记忆管理</h2></div><p>查看、修正和测试 Aling Memory 的长期记忆</p></div>
+          <article class="card memory-manager-card">
+            <div class="manager-toolbar">
+              <label class="search-box"><span>⌕</span><input id="manager-memory-search" type="search" placeholder="搜索记忆内容或标签"></label>
+              <select id="manager-scope-filter" aria-label="选择会话"><option value="">全部会话</option></select>
+              <select id="manager-type-filter" aria-label="筛选记忆类型">
+                <option value="">全部类型</option><option value="small_memory">小记忆</option><option value="preference_memory">偏好</option><option value="relationship_memory">关系边界</option><option value="life_signal">生活规律</option><option value="project_context">项目背景</option><option value="context_summary">上下文摘要</option>
+              </select>
+              <select id="manager-status-filter" aria-label="筛选状态"><option value="">全部状态</option><option value="active">生效中</option><option value="stale">待检查</option><option value="deprecated">已归档</option></select>
+              <button id="new-memory" class="primary-button" type="button">新增记忆</button>
+            </div>
+            <div id="memory-manager-notice" class="manager-notice hidden"></div>
+            <div class="memory-table-wrap">
+              <table class="memory-table">
+                <thead><tr><th>内容</th><th>类型</th><th>标签</th><th>可信度</th><th>最近调用</th><th>状态</th></tr></thead>
+                <tbody id="memory-manager-body"><tr><td colspan="6" class="table-empty">正在读取记忆……</td></tr></tbody>
+              </table>
+            </div>
+            <div class="manager-footer"><span id="memory-count">共 0 条</span><span>点击记忆可查看和编辑</span></div>
+          </article>
 
-      <article class="card">
-        <h2>shared_life_memory</h2>
-        <dl class="kv" id="memory-summary"></dl>
-        <div id="memory-traces" class="trace-list"></div>
-      </article>
-    </section>
-  </main>
+          <article class="card retrieval-card">
+            <div class="retrieval-input">
+              <div><h3>检索测试</h3><p class="note">输入一句话，快速预览可能匹配的记忆，不会向 QQ 发送消息。</p></div>
+              <textarea id="memory-preview-text" rows="4" placeholder="例如：我最近又不想写论文了"></textarea>
+              <button id="memory-preview-button" class="primary-button" type="button">测试匹配</button>
+            </div>
+            <div id="memory-preview-results" class="retrieval-results"><div class="empty-state simple-empty">等待测试</div></div>
+          </article>
+        </section>
 
+        <section id="continuity" class="page-section">
+          <div class="section-heading"><div><span class="eyebrow">Continuity</span><h2>连续性状态</h2></div><p>SLC、短期余波与长期记忆的协作关系</p></div>
+          <div class="grid continuity-grid">
+            <article class="card span-two">
+              <div class="card-heading"><h3>连续性系统协作关系</h3><span id="continuity-overall-badge" class="badge unknown">未知</span></div>
+              <p class="note" id="continuity-summary"></p><div id="continuity-layers" class="layer-list"></div>
+              <details class="detail-panel"><summary>查看模块关系矩阵</summary><div class="table-wrap"><table class="matrix-table"><thead><tr><th>模块</th><th>负责什么</th><th>读取谁</th><th>写入谁</th><th>注入块</th><th>风险</th></tr></thead><tbody id="continuity-matrix"></tbody></table></div></details>
+            </article>
+            <article class="card"><div class="card-heading"><h3>shared_life_context</h3><span id="slc-badge" class="badge unknown">未知</span></div><p class="note">阿绫今日生活舞台，不是用户记忆库。</p><dl class="kv" id="continuity-slc"></dl></article>
+            <article class="card"><div class="card-heading"><h3>Inner Continuity</h3><span id="inner-badge" class="badge unknown">未知</span></div><p class="note">保存短期心理余波，不写入 SLC 或长期记忆。</p><dl class="kv" id="inner-config"></dl><dl class="kv" id="inner-metrics"></dl><div id="inner-warnings" class="mini-list"></div></article>
+            <article class="card"><div class="card-heading"><h3>Aling Memory</h3><span id="aling-memory-badge" class="badge unknown">未知</span></div><p class="note">负责长期小记忆、User Life Mirror 与 recent_trace。</p><dl class="kv" id="aling-memory-config"></dl><dl class="kv" id="aling-memory-metrics"></dl><div id="aling-memory-warnings" class="mini-list"></div></article>
+            <article class="card"><div class="card-heading"><h3>协作健康检查</h3><span id="continuity-health-badge" class="badge unknown">未知</span></div><p class="note" id="continuity-health-summary"></p><div id="continuity-health-checks" class="check-list"></div></article>
+          </div>
+
+          <details class="content-details">
+            <summary>查看连续性内容与原始诊断</summary>
+            <div class="content-main">
+              <article class="card">
+                <div class="card-heading"><h3>Inner Continuity 内容</h3><span id="inner-content-badge" class="badge unknown">未知</span></div>
+                <div class="toolbar"><button id="refresh-continuity-content" class="secondary-button" type="button">刷新连续性内容</button></div>
+                <div id="inner-content-diagnostics" class="mini-list"></div><div id="inner-content-list" class="content-list"></div>
+              </article>
+              <article class="card">
+                <div class="card-heading"><h3>Aling Memory 详细内容</h3><span id="memory-content-badge" class="badge unknown">未知</span></div>
+                <div class="toolbar"><input id="memory-search" class="search-input" type="search" placeholder="搜索原始记忆、recent_trace 或 summary"></div>
+                <div id="memory-content-diagnostics" class="mini-list"></div>
+                <div class="memory-sections">
+                  <section><h4>记忆库 memory_store</h4><div id="memory-store-content" class="content-list"></div></section>
+                  <section><h4>User Life Mirror</h4><div id="mirror-content" class="content-list"></div></section>
+                  <section><h4>最近上下文摘要</h4><div id="summary-content" class="content-list"></div></section>
+                  <section><h4>recent_trace 话题残影</h4><div id="recent-trace-content" class="content-list"></div></section>
+                  <section><h4>flashback_state</h4><div id="flashback-content" class="content-list"></div></section>
+                </div>
+              </article>
+              <article id="diagnostics" class="card span-two"><h3>读取诊断</h3><div id="continuity-read-diagnostics" class="content-list"></div></article>
+            </div>
+          </details>
+        </section>
+
+        <section id="qzone" class="page-section">
+          <div class="section-heading"><div><span class="eyebrow">Qzone</span><h2>QQ 空间状态</h2></div><p>触发窗口、发送链路与最近历史</p></div>
+          <div class="grid two">
+            <article class="card"><h3>刷新倒计时</h3><dl class="kv" id="refresh-countdown"></dl></article>
+            <article class="card"><h3>随机触发预测</h3><dl class="kv" id="trigger-prediction"></dl></article>
+            <article class="card"><h3>QQ 空间 bridge</h3><dl class="kv" id="bridge-state"></dl></article>
+            <article class="card"><h3>发送链路健康</h3><dl class="kv" id="send-health"></dl></article>
+            <article class="card"><h3>最近历史</h3><div id="history-list" class="history-list"></div></article>
+            <article class="card"><h3>shared_life_memory</h3><dl class="kv" id="memory-summary"></dl><div id="memory-traces" class="trace-list"></div></article>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="memory-drawer-backdrop" class="drawer-backdrop hidden" aria-hidden="true"></div>
+  <aside id="memory-drawer" class="memory-drawer" aria-label="编辑记忆" aria-hidden="true">
+    <div class="drawer-header"><div><span class="eyebrow">Memory editor</span><h2 id="memory-form-title">编辑记忆</h2></div><button id="memory-drawer-close" class="icon-button" type="button" aria-label="关闭">×</button></div>
+    <form id="memory-form" class="memory-form">
+      <input id="memory-form-id" type="hidden">
+      <label>所属会话<select id="memory-form-scope" required></select></label>
+      <label>记忆内容<textarea id="memory-form-content" rows="5" maxlength="1000" required></textarea><small>保持简短、明确，只记录稳定且值得长期使用的信息。</small></label>
+      <div class="form-grid">
+        <label>记忆类型<select id="memory-form-type" required><option value="small_memory">小记忆</option><option value="preference_memory">偏好</option><option value="relationship_memory">关系边界</option><option value="life_signal">生活规律</option><option value="project_context">项目背景</option><option value="context_summary">上下文摘要</option></select></label>
+        <label>有效期（天）<input id="memory-form-ttl" type="number" min="1" max="3650" placeholder="留空不过期"></label>
+      </div>
+      <label>标签<input id="memory-form-tags" type="text" maxlength="400" placeholder="使用逗号分隔，例如：论文, 学习"></label>
+      <label>使用规则<textarea id="memory-form-use-rule" rows="3" maxlength="500" placeholder="例如：只在用户主动聊论文时使用"></textarea></label>
+      <label>语气提示<input id="memory-form-tone" type="text" maxlength="200" placeholder="例如：自然接住，不催促"></label>
+      <label>可信度 <output id="memory-confidence-output">80%</output><input id="memory-form-confidence" type="range" min="0" max="1" step="0.05" value="0.8"></label>
+      <div id="memory-form-meta" class="form-meta"></div>
+      <div class="drawer-actions">
+        <button id="memory-form-cancel" class="secondary-button" type="button">取消</button>
+        <button id="memory-form-archive" class="danger-button hidden" type="button">归档</button>
+        <button class="primary-button" type="submit">保存修改</button>
+      </div>
+    </form>
+  </aside>
+
+  <div id="dashboard-toast" class="toast hidden" role="status"></div>
   <script src="/static/dashboard.js"></script>
 </body>
 </html>

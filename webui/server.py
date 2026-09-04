@@ -13,6 +13,7 @@ from hypercorn.config import Config
 from quart import Quart, jsonify, redirect, request, send_from_directory
 
 from .auth import DashboardAuth, clear_login_cookie, login_redirect, set_login_cookie
+from .memory_editor import MemoryEditor, MemoryEditorError
 
 
 class LifeDashboardWebUI:
@@ -170,6 +171,11 @@ class LifeDashboardWebUI:
         static_dir = self.plugin_dir / "static"
         app = Quart(__name__, static_folder=None)
         auth = DashboardAuth(self.settings_provider)
+        memory_editor = MemoryEditor(
+            path_provider=self.data_reader.find_aling_memory_store_path,
+            enabled_provider=lambda: bool(self.settings_provider().get("memory_edit_enabled", False)),
+            invalidate_callback=self.data_reader.invalidate_cache,
+        )
 
         @app.get("/")
         async def index():
@@ -225,6 +231,26 @@ class LifeDashboardWebUI:
             if not auth.is_authorized_request(request):
                 return jsonify({"error": "unauthorized"}), 401
             return None
+
+        async def _memory_write_guard():
+            guard = await _api_guard()
+            if guard:
+                return guard
+            if not bool(self.settings_provider().get("memory_edit_enabled", False)):
+                return jsonify({"ok": False, "error": "editing_disabled", "message": "记忆编辑功能未启用。"}), 403
+            if not request.is_json:
+                return jsonify({"ok": False, "error": "json_required", "message": "请求必须使用 JSON。"}), 415
+            if request.headers.get("X-Requested-With") != "AlingDashboard":
+                return jsonify({"ok": False, "error": "csrf_guard", "message": "请求来源校验失败。"}), 403
+            return None
+
+        async def _memory_payload() -> dict[str, Any]:
+            payload = await request.get_json(silent=True) or {}
+            return payload if isinstance(payload, dict) else {}
+
+        def _memory_error(exc: MemoryEditorError):
+            self.logger.warning("aling_life_dashboard memory editor rejected %s", exc.code)
+            return jsonify({"ok": False, "error": exc.code, "message": exc.message}), exc.status
 
         @app.get("/api/status")
         async def api_status():
@@ -283,6 +309,68 @@ class LifeDashboardWebUI:
                 self.logger.warning("aling_life_dashboard continuity debug degraded: %s", exc)
                 return jsonify({"ok": False, "degraded": True, "error": "read_failed"}), 200
 
+        @app.get("/api/memories")
+        async def api_memories():
+            guard = await _api_guard()
+            if guard:
+                return guard
+            try:
+                return jsonify(memory_editor.snapshot())
+            except MemoryEditorError as exc:
+                return _memory_error(exc)
+
+        @app.post("/api/memories")
+        async def api_memory_add():
+            guard = await _memory_write_guard()
+            if guard:
+                return guard
+            try:
+                return jsonify({"ok": True, "item": memory_editor.add(await _memory_payload())})
+            except MemoryEditorError as exc:
+                return _memory_error(exc)
+
+        @app.patch("/api/memories/<memory_id>")
+        async def api_memory_update(memory_id: str):
+            guard = await _memory_write_guard()
+            if guard:
+                return guard
+            try:
+                return jsonify({"ok": True, "item": memory_editor.update(memory_id, await _memory_payload())})
+            except MemoryEditorError as exc:
+                return _memory_error(exc)
+
+        @app.post("/api/memories/<memory_id>/archive")
+        async def api_memory_archive(memory_id: str):
+            guard = await _memory_write_guard()
+            if guard:
+                return guard
+            try:
+                return jsonify({"ok": True, "item": memory_editor.set_status(memory_id, await _memory_payload(), "deprecated")})
+            except MemoryEditorError as exc:
+                return _memory_error(exc)
+
+        @app.post("/api/memories/<memory_id>/restore")
+        async def api_memory_restore(memory_id: str):
+            guard = await _memory_write_guard()
+            if guard:
+                return guard
+            try:
+                return jsonify({"ok": True, "item": memory_editor.set_status(memory_id, await _memory_payload(), "active")})
+            except MemoryEditorError as exc:
+                return _memory_error(exc)
+
+        @app.post("/api/memories/preview")
+        async def api_memory_preview():
+            guard = await _api_guard()
+            if guard:
+                return guard
+            if not request.is_json or request.headers.get("X-Requested-With") != "AlingDashboard":
+                return jsonify({"ok": False, "error": "invalid_request", "message": "请求格式不正确。"}), 400
+            try:
+                return jsonify(memory_editor.preview(await _memory_payload()))
+            except MemoryEditorError as exc:
+                return _memory_error(exc)
+
         return app
 
     def _safe_snapshot_section(self, section: str) -> dict[str, Any]:
@@ -305,14 +393,14 @@ def _login_html(error: bool = False) -> str:
   <title>Aling Life Dashboard Login</title>
   <style>
     :root {{
-      color-scheme: dark;
+      color-scheme: light;
       font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --bg: #11151b;
-      --panel: #1b222b;
-      --line: rgba(159, 176, 193, 0.22);
-      --text: #f3f6f8;
-      --muted: #a8b5c2;
-      --accent: #ee8f7d;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --line: #e4e7ec;
+      --text: #20242c;
+      --muted: #667085;
+      --accent: #f25f5c;
     }}
     * {{ box-sizing: border-box; }}
     body {{
@@ -321,9 +409,7 @@ def _login_html(error: bool = False) -> str:
       display: grid;
       place-items: center;
       padding: 24px;
-      background:
-        radial-gradient(circle at 18% 6%, rgba(238, 143, 125, 0.16), transparent 28rem),
-        linear-gradient(180deg, #151a21, var(--bg));
+      background: var(--bg);
       color: var(--text);
     }}
     form {{
@@ -332,9 +418,9 @@ def _login_html(error: bool = False) -> str:
       gap: 16px;
       padding: 30px;
       border: 1px solid var(--line);
-      border-radius: 22px;
-      background: linear-gradient(180deg, rgba(32, 41, 52, 0.88), rgba(27, 34, 43, 0.96));
-      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: 0 16px 44px rgba(16, 24, 40, 0.1);
     }}
     h1 {{ margin: 0; font-size: 26px; line-height: 1.15; letter-spacing: 0; }}
     p {{ margin: -6px 0 4px; color: var(--muted); font-size: 14px; line-height: 1.6; }}
@@ -343,31 +429,31 @@ def _login_html(error: bool = False) -> str:
       border: 1px solid var(--line);
       border-radius: 14px;
       padding: 0 14px;
-      background: rgba(17, 21, 27, 0.9);
-      color: #fff;
+      background: #fff;
+      color: var(--text);
       font-size: 15px;
       outline: none;
     }}
     input:focus {{
-      border-color: rgba(238, 143, 125, 0.62);
-      box-shadow: 0 0 0 3px rgba(238, 143, 125, 0.13);
+      border-color: #f48b88;
+      box-shadow: 0 0 0 3px rgba(242, 95, 92, 0.11);
     }}
     button {{
       height: 46px;
-      border: 1px solid rgba(238, 143, 125, 0.5);
-      border-radius: 14px;
-      background: rgba(238, 143, 125, 0.18);
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+      background: var(--accent);
       color: #fff;
       font-weight: 760;
       cursor: pointer;
     }}
-    button:hover {{ background: rgba(238, 143, 125, 0.26); }}
+    button:hover {{ background: #e8514e; }}
     .error {{
-      border: 1px solid rgba(238, 129, 125, 0.38);
+      border: 1px solid #f0c4c1;
       border-radius: 12px;
       padding: 10px 12px;
-      background: rgba(238, 129, 125, 0.13);
-      color: #ffc1be;
+      background: #fff1f0;
+      color: #a72f2f;
       font-size: 14px;
     }}
   </style>
@@ -375,7 +461,7 @@ def _login_html(error: bool = False) -> str:
 <body>
   <form method="post" action="/login">
     <h1>Aling Life Dashboard</h1>
-    <p>输入 Dashboard 密码后查看只读状态面板。</p>
+    <p>输入 Dashboard 密码后查看状态并管理已授权的记忆内容。</p>
     {error_html}
     <input name="password" type="password" autocomplete="current-password" placeholder="Dashboard password" required autofocus>
     <button type="submit">进入 Dashboard</button>

@@ -83,6 +83,13 @@ class DashboardDataReader:
         self._cache = (now, snapshot)
         return snapshot
 
+    def invalidate_cache(self) -> None:
+        self._cache = None
+
+    def find_aling_memory_store_path(self) -> Path | None:
+        scan = self._scan_plugin_jsons(ALING_MEMORY_PLUGIN_NAME, ("",), max_parse=20)
+        return self._pick_scanned_file(scan, "memory_store.json", ("memory", "store", "memories"))
+
     def _safe_read_section(self, name: str, reader, fallback: dict[str, Any]) -> dict[str, Any]:
         try:
             value = reader()

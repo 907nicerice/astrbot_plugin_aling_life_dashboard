@@ -1,26 +1,28 @@
 # astrbot_plugin_aling_life_dashboard
 
-只读 WebUI Dashboard，用于观察：
+WebUI Dashboard，用于观察阿绫插件状态，并在显式授权后管理长期记忆：
 
 - `shared_life_context`：daily 与 period 状态
 - `qzone_life_bridge`：随机触发状态、窗口、额度、冷却
 - `qzone_auto_like`：发送链路健康，只显示脱敏推断
 - `shared_life_memory`：最近 traces 与重复率
 
-## 只读原则
+## 安全边界
 
-本插件只读文件与运行时配置，不会：
+Dashboard 默认只读。只有同时满足“已设置 Dashboard 密码”和“开启 `memory_edit_enabled`”时，才允许新增、修改、归档或恢复 `aling_memory` 记忆。
+
+无论是否开启记忆编辑，本插件都不会：
 
 - 发送 QQ 空间
 - 调用 `post_now`
 - 调用 `qzone_auto_like` 发送接口
 - 调用 `/slc period_refresh`
 - 调用 `/slc auto_refresh`
-- 修改配置
+- 修改 AstrBot 或其他插件配置
 - 修改 `shared_life_context`
 - 调用 LLM
 
-页面没有发送按钮，API 也不提供任何写操作。
+记忆管理不提供永久删除，归档可以恢复；写入前校验字段，并为 `memory_store.json` 创建 `.bak` 备份。
 
 ## 配置
 
@@ -31,7 +33,8 @@
   "dashboard_enabled": false,
   "bind_host": "127.0.0.1",
   "bind_port": 7842,
-  "dashboard_password": ""
+  "dashboard_password": "",
+  "memory_edit_enabled": false
 }
 ```
 
@@ -93,6 +96,17 @@ http://服务器IP:7842
 - `/api/qzone`
 - `/api/memory`
 - `/api/health`
+- `/api/continuity-content`
+- `/api/continuity-debug`
+- `/api/memories`
+- `/api/memories/preview`
+
+开启 `memory_edit_enabled` 后还可使用：
+
+- `POST /api/memories`
+- `PATCH /api/memories/{id}`
+- `POST /api/memories/{id}/archive`
+- `POST /api/memories/{id}/restore`
 
 未登录访问 `/api/*` 返回 `401`。
 
@@ -111,3 +125,5 @@ API 不返回完整 cookie、`p_skey`、`skey`、`pt4_token`。
 - shared_life_memory 最近 traces、days、最近 24h 重复率
 - 状态漂移 warning badge
 - Bridge 发帖机会评分：Low / Medium / High
+- 长期记忆搜索、筛选、查看、新增、修改、归档与恢复
+- 记忆匹配快速预览（只读模拟，不向 QQ 发送消息）
