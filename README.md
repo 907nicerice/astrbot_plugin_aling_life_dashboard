@@ -107,6 +107,8 @@ http://服务器IP:7842
 - `PATCH /api/memories/{id}`
 - `POST /api/memories/{id}/archive`
 - `POST /api/memories/{id}/restore`
+- `POST /api/memory-candidates/{id}/approve`
+- `POST /api/memory-candidates/{id}/reject`
 
 未登录访问 `/api/*` 返回 `401`。
 
@@ -126,4 +128,7 @@ API 不返回完整 cookie、`p_skey`、`skey`、`pt4_token`。
 - 状态漂移 warning badge
 - Bridge 发帖机会评分：Low / Medium / High
 - 长期记忆搜索、筛选、查看、新增、修改、归档与恢复
+- 候选记忆审核、确认和拒绝
+- 编辑长期记忆的重要性、稳定性、敏感等级和有效期；修改有效期后从保存时刻重新计算到期时间
+- 查看明确到期时间、证据次数和最近确认信息
 - 记忆匹配快速预览（只读模拟，不向 QQ 发送消息）

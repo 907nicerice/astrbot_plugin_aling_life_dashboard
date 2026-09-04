@@ -6,7 +6,7 @@ import os
 import secrets
 import shutil
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -49,18 +49,24 @@ class MemoryEditor:
             path, root = self._load()
             scopes = self._scope_map(root)
             items: list[dict[str, Any]] = []
+            candidates: list[dict[str, Any]] = []
             for scope_ref, (scope_id, scope) in scopes.items():
                 label = f"会话 {scope_ref[:8]}"
                 for raw in scope.get("memories", []):
                     if isinstance(raw, dict):
                         items.append(self._public_item(raw, scope_ref, label))
+                for raw in scope.get("candidates", []):
+                    if isinstance(raw, dict):
+                        candidates.append(self._public_candidate(raw, scope_ref, label))
             items.sort(key=lambda item: item.get("updated_at") or item.get("created_at") or "", reverse=True)
+            candidates.sort(key=lambda item: item.get("updated_at") or item.get("created_at") or "", reverse=True)
             return {
                 "ok": True,
                 "editable": bool(self.enabled_provider()),
                 "store_found": True,
                 "scope_count": len(scopes),
                 "item_count": len(items),
+                "candidate_count": len(candidates),
                 "scopes": [
                     {
                         "ref": ref,
@@ -70,6 +76,7 @@ class MemoryEditor:
                     for ref, (_scope_id, scope) in scopes.items()
                 ],
                 "items": items,
+                "candidates": candidates,
                 "store_updated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
             }
 
@@ -87,14 +94,22 @@ class MemoryEditor:
                 "use_rule": self._short_text(payload.get("use_rule"), 500),
                 "tone": self._short_text(payload.get("tone"), 200),
                 "confidence": self._confidence(payload.get("confidence", 0.8)),
+                "importance": self._score(payload.get("importance", 0.6), "重要性"),
+                "stability": self._score(payload.get("stability", 0.6), "稳定性"),
+                "sensitivity": self._sensitivity(payload.get("sensitivity", "low")),
                 "source": "dashboard_manual",
                 "status": "active",
                 "ttl_days": self._ttl_days(payload.get("ttl_days")),
+                "expires_at": None,
                 "created_at": now,
                 "updated_at": now,
                 "last_used_at": None,
                 "used_count": 0,
+                "evidence_count": 1,
+                "last_confirmed_at": now,
+                "supersedes_id": None,
             }
+            item["expires_at"] = self._expires_after_days(item["ttl_days"])
             scope.setdefault("memories", []).append(item)
             self._save(root)
             return self._public_item(item, scope_ref, f"会话 {scope_ref[:8]}")
@@ -117,8 +132,15 @@ class MemoryEditor:
                 item["tone"] = self._short_text(payload.get("tone"), 200)
             if "confidence" in payload:
                 item["confidence"] = self._confidence(payload.get("confidence"))
+            if "importance" in payload:
+                item["importance"] = self._score(payload.get("importance"), "重要性")
+            if "stability" in payload:
+                item["stability"] = self._score(payload.get("stability"), "稳定性")
+            if "sensitivity" in payload:
+                item["sensitivity"] = self._sensitivity(payload.get("sensitivity"))
             if "ttl_days" in payload:
                 item["ttl_days"] = self._ttl_days(payload.get("ttl_days"))
+                item["expires_at"] = self._expires_after_days(item["ttl_days"])
             item["updated_at"] = self._now()
             self._save(root)
             return self._public_item(item, scope_ref, f"会话 {scope_ref[:8]}")
@@ -135,6 +157,55 @@ class MemoryEditor:
             item["updated_at"] = self._now()
             self._save(root)
             return self._public_item(item, scope_ref, f"会话 {scope_ref[:8]}")
+
+    def approve_candidate(self, candidate_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_enabled()
+        with self._lock:
+            _path, root = self._load()
+            scope_ref, _scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
+            candidate = self._find_candidate(scope, candidate_id)
+            if self._sensitivity(candidate.get("sensitivity", "low")) == "high":
+                raise MemoryEditorError("sensitive_candidate", "高敏感候选不能转为长期记忆，请直接拒绝。")
+            now = self._now()
+            ttl_days = self._ttl_days(candidate.get("ttl_days"))
+            item = {
+                "id": f"mem_{secrets.token_hex(6)}",
+                "type": self._memory_type(candidate.get("suggested_type")),
+                "content": self._content(candidate.get("content")),
+                "tags": self._tags(candidate.get("tags")),
+                "use_rule": self._short_text(candidate.get("use_rule"), 500),
+                "tone": "",
+                "confidence": self._confidence(candidate.get("confidence", 0.7)),
+                "importance": self._score(candidate.get("importance", 0.5), "重要性"),
+                "stability": self._score(candidate.get("stability", 0.5), "稳定性"),
+                "sensitivity": self._sensitivity(candidate.get("sensitivity", "low")),
+                "source": "dashboard_approved",
+                "status": "active",
+                "ttl_days": ttl_days,
+                "expires_at": self._expires_after_days(ttl_days),
+                "created_at": now,
+                "updated_at": now,
+                "last_confirmed_at": now,
+                "last_used_at": None,
+                "used_count": 0,
+                "evidence_count": max(1, int(candidate.get("evidence_count") or 1)),
+                "supersedes_id": None,
+            }
+            scope.setdefault("memories", []).append(item)
+            scope["candidates"] = [row for row in scope.get("candidates", []) if row is not candidate]
+            self._save(root)
+            return self._public_item(item, scope_ref, f"会话 {scope_ref[:8]}")
+
+    def reject_candidate(self, candidate_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_enabled()
+        with self._lock:
+            _path, root = self._load()
+            scope_ref, _scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
+            candidate = self._find_candidate(scope, candidate_id)
+            public = self._public_candidate(candidate, scope_ref, f"会话 {scope_ref[:8]}")
+            scope["candidates"] = [row for row in scope.get("candidates", []) if row is not candidate]
+            self._save(root)
+            return public
 
     def preview(self, payload: dict[str, Any]) -> dict[str, Any]:
         query = self._short_text(payload.get("text"), 800)
@@ -195,7 +266,7 @@ class MemoryEditor:
             raise MemoryEditorError("store_unreadable", f"无法读取记忆文件：{exc}", 503) from exc
         if not isinstance(root, dict) or not isinstance(root.get("scopes", {}), dict):
             raise MemoryEditorError("invalid_store", "记忆文件结构不受支持。", 503)
-        root.setdefault("version", 1)
+        root["version"] = max(2, int(root.get("version") or 1))
         root.setdefault("scopes", {})
         return path, root
 
@@ -252,6 +323,34 @@ class MemoryEditor:
                 return item
         raise MemoryEditorError("memory_not_found", "没有找到这条记忆。", 404)
 
+    @staticmethod
+    def _find_candidate(scope: dict[str, Any], candidate_id: str) -> dict[str, Any]:
+        for item in scope.get("candidates", []):
+            if isinstance(item, dict) and str(item.get("id")) == str(candidate_id):
+                return item
+        raise MemoryEditorError("candidate_not_found", "没有找到这条候选记忆。", 404)
+
+    def _public_candidate(self, item: dict[str, Any], scope_ref: str, scope_label: str) -> dict[str, Any]:
+        return {
+            "id": str(item.get("id") or ""),
+            "scope_ref": scope_ref,
+            "scope_label": scope_label,
+            "suggested_type": str(item.get("suggested_type") or "small_memory"),
+            "content": self._short_text(item.get("content"), 1000),
+            "reason": self._short_text(item.get("reason"), 500),
+            "confidence": self._confidence(item.get("confidence", 0.7)),
+            "importance": self._score(item.get("importance", 0.5), "重要性"),
+            "stability": self._score(item.get("stability", 0.5), "稳定性"),
+            "sensitivity": self._sensitivity(item.get("sensitivity", "low")),
+            "decision": self._short_text(item.get("decision"), 40) or "candidate",
+            "ttl_days": self._ttl_days(item.get("ttl_days")),
+            "tags": self._tags(item.get("tags", [])),
+            "use_rule": self._short_text(item.get("use_rule"), 500),
+            "created_at": self._short_text(item.get("created_at"), 80),
+            "updated_at": self._short_text(item.get("updated_at"), 80),
+            "evidence_count": max(1, int(item.get("evidence_count") or 1)),
+        }
+
     def _public_item(self, item: dict[str, Any], scope_ref: str, scope_label: str) -> dict[str, Any]:
         return {
             "id": str(item.get("id") or ""),
@@ -263,13 +362,20 @@ class MemoryEditor:
             "use_rule": self._short_text(item.get("use_rule"), 500),
             "tone": self._short_text(item.get("tone"), 200),
             "confidence": self._confidence(item.get("confidence", 0.7)),
+            "importance": self._score(item.get("importance", 0.5), "重要性"),
+            "stability": self._score(item.get("stability", 0.5), "稳定性"),
+            "sensitivity": self._sensitivity(item.get("sensitivity", "low")),
             "source": self._short_text(item.get("source"), 80),
             "status": str(item.get("status") or "active"),
             "ttl_days": self._ttl_days(item.get("ttl_days")),
+            "expires_at": self._short_text(item.get("expires_at"), 80),
             "created_at": self._short_text(item.get("created_at"), 80),
             "updated_at": self._short_text(item.get("updated_at"), 80),
             "last_used_at": self._short_text(item.get("last_used_at"), 80),
             "used_count": max(0, int(item.get("used_count") or 0)),
+            "evidence_count": max(1, int(item.get("evidence_count") or 1)),
+            "last_confirmed_at": self._short_text(item.get("last_confirmed_at"), 80),
+            "supersedes_id": self._short_text(item.get("supersedes_id"), 80),
             "expired": self._expired(item),
         }
 
@@ -320,6 +426,20 @@ class MemoryEditor:
             raise MemoryEditorError("invalid_confidence", "可信度必须在 0 到 1 之间。")
 
     @staticmethod
+    def _score(value: Any, label: str) -> float:
+        try:
+            return round(max(0.0, min(1.0, float(value))), 2)
+        except (TypeError, ValueError):
+            raise MemoryEditorError("invalid_score", f"{label}必须在 0 到 1 之间。")
+
+    @staticmethod
+    def _sensitivity(value: Any) -> str:
+        result = str(value or "low").strip().lower()
+        if result not in {"low", "medium", "high"}:
+            raise MemoryEditorError("invalid_sensitivity", "敏感等级不受支持。")
+        return result
+
+    @staticmethod
     def _ttl_days(value: Any) -> int | None:
         if value in (None, "", 0, "0"):
             return None
@@ -332,7 +452,22 @@ class MemoryEditor:
         return result
 
     @staticmethod
+    def _expires_after_days(days: int | None) -> str | None:
+        if not days:
+            return None
+        return (datetime.now(timezone.utc) + timedelta(days=days)).replace(microsecond=0).isoformat()
+
+    @staticmethod
     def _expired(item: dict[str, Any]) -> bool:
+        explicit = item.get("expires_at")
+        if explicit:
+            try:
+                expires = datetime.fromisoformat(str(explicit).replace("Z", "+00:00"))
+                if expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)
+                return datetime.now(timezone.utc) >= expires
+            except (TypeError, ValueError):
+                pass
         ttl = item.get("ttl_days")
         if not ttl:
             return False

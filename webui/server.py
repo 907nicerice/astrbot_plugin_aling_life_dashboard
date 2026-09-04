@@ -359,6 +359,26 @@ class LifeDashboardWebUI:
             except MemoryEditorError as exc:
                 return _memory_error(exc)
 
+        @app.post("/api/memory-candidates/<candidate_id>/approve")
+        async def api_memory_candidate_approve(candidate_id: str):
+            guard = await _memory_write_guard()
+            if guard:
+                return guard
+            try:
+                return jsonify({"ok": True, "item": memory_editor.approve_candidate(candidate_id, await _memory_payload())})
+            except MemoryEditorError as exc:
+                return _memory_error(exc)
+
+        @app.post("/api/memory-candidates/<candidate_id>/reject")
+        async def api_memory_candidate_reject(candidate_id: str):
+            guard = await _memory_write_guard()
+            if guard:
+                return guard
+            try:
+                return jsonify({"ok": True, "item": memory_editor.reject_candidate(candidate_id, await _memory_payload())})
+            except MemoryEditorError as exc:
+                return _memory_error(exc)
+
         @app.post("/api/memories/preview")
         async def api_memory_preview():
             guard = await _api_guard()

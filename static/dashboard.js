@@ -52,6 +52,74 @@ function renderKV(container, rows) {
   }
 }
 
+function rawDetails(label, value) {
+  if (value === null || value === undefined || value === "" || (Array.isArray(value) && !value.length)) return "";
+  return `<details class="raw-preview"><summary>${escapeHtml(label)}</summary><pre class="raw-block">${escapeHtml(JSON.stringify(value, null, 2))}</pre></details>`;
+}
+
+function metricCard(label, value, note = "") {
+  return `<div class="mini-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>${note ? `<small>${escapeHtml(note)}</small>` : ""}</div>`;
+}
+
+function statePill(label, ok, neutral = false) {
+  return `<span class="badge ${neutral ? "info" : ok ? "ok" : "warn"}">${escapeHtml(label)}</span>`;
+}
+
+function countdownText(value) {
+  if (!value) return "暂无计划";
+  const date = new Date(String(value).split(" ")[0]);
+  if (Number.isNaN(date.getTime())) return text(value);
+  const seconds = Math.max(0, Math.floor((date.getTime() - Date.now()) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours >= 24) return `${Math.floor(hours / 24)} 天 ${hours % 24} 小时后`;
+  if (hours) return `${hours} 小时 ${minutes} 分钟后`;
+  return `${minutes} 分钟后`;
+}
+
+function compactText(value, limit = 180) {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  return clean.length > limit ? `${clean.slice(0, limit)}…` : clean;
+}
+
+function formatNextCheckZh(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes)) return "暂无计划";
+  if (minutes <= 0) return "即将检查";
+  if (minutes < 60) return `${Math.ceil(minutes)} 分钟后`;
+  const hours = Math.floor(minutes / 60);
+  const rest = Math.round(minutes % 60);
+  return rest ? `${hours} 小时 ${rest} 分钟后` : `${hours} 小时后`;
+}
+
+function historyResultLabel(value) {
+  const key = String(value || "").toLowerCase();
+  const labels = {
+    skip: "已跳过",
+    skipped: "已跳过",
+    sent: "已发送",
+    success: "成功",
+    posted: "已发布",
+    send_failed: "发送失败",
+    failed: "失败",
+    error: "错误",
+  };
+  return labels[key] || text(value, "状态未知");
+}
+
+function historyResultBadge(value) {
+  const key = String(value || "").toLowerCase();
+  const style = ["sent", "success", "posted"].includes(key)
+    ? "ok"
+    : ["send_failed", "failed", "error"].includes(key) ? "error" : "info";
+  return `<span class="badge ${style}">${escapeHtml(historyResultLabel(value))}</span>`;
+}
+
+function windowLabel(value) {
+  const labels = { noon: "午间", evening: "晚间", late_night: "深夜", morning: "上午", afternoon: "下午", night: "夜间" };
+  return labels[String(value || "")] || text(value, "未命名");
+}
+
 function renderStatus(status) {
   const interval = Math.max(3, Number(status.refresh_interval_seconds) || 10);
   if (interval !== state.refreshIntervalSeconds) {
@@ -63,31 +131,30 @@ function renderStatus(status) {
   }
 
   const cards = [
-    ["当前时间", status.now, "green"],
-    ["WebUI", status.webui === "running" ? "运行中" : status.webui, statusColor(status.webui)],
-    ["生活状态", status.shared_life_context_found ? "已连接" : "未连接", statusColor(status.shared_life_context_found)],
-    ["空间桥接", status.qzone_bridge_found ? "已连接" : "未连接", statusColor(status.qzone_bridge_found)],
-    ["发送链路", status.qzone_auto_like_found ? "已发现" : "未发现", statusColor(status.qzone_auto_like_found)],
-    ["Dry run", status.dry_run ? "已开启" : "已关闭", status.dry_run ? "yellow" : "green"],
-    ["Bridge", status.bridge_enabled ? "已启用" : "未启用", status.bridge_enabled ? "green" : "yellow"],
+    ["当前时间", formatDate(status.now), "green", "Dashboard 本地时间"],
+    ["WebUI", status.webui === "running" ? "运行中" : status.webui, statusColor(status.webui), `每 ${state.refreshIntervalSeconds} 秒刷新`],
+    ["生活状态", status.shared_life_context_found ? "已连接" : "未连接", statusColor(status.shared_life_context_found), "当天生活舞台"],
+    ["空间链路", status.bridge_enabled ? "桥接已启用" : "桥接未启用", status.bridge_enabled ? "green" : "yellow", status.dry_run ? "演练模式，不会真实发送" : (status.qzone_bridge_found ? "正式模式" : "未发现桥接插件")],
+    ["发送组件", status.qzone_auto_like_found ? "已发现" : "未发现", statusColor(status.qzone_auto_like_found), "QQ 空间执行端"],
   ];
-  $("status-cards").innerHTML = cards.map(([label, value, color]) => `
+  $("status-cards").innerHTML = cards.map(([label, value, color, note]) => `
     <article class="status-card ${color}">
       <div class="label">${escapeHtml(label)}</div>
       <div class="value">${escapeHtml(value)}</div>
+      <div class="status-note">${escapeHtml(note)}</div>
     </article>
   `).join("");
 }
 
 function renderLife(life) {
   const plan = life.daily?.daily_plan || {};
-  const labels = [["morning", "morning"], ["afternoon", "afternoon"], ["evening", "evening"], ["night", "night"]];
+  const labels = [["morning", "上午"], ["afternoon", "下午"], ["evening", "晚上"], ["night", "深夜"]];
   $("daily-plan").innerHTML = labels.map(([key, label]) => `
     <div class="plan-item"><b>${label}</b><span>${escapeHtml(text(plan[key]))}</span></div>
   `).join("");
   renderKV($("daily-meta"), [
-    ["last_daily_plan_refresh_at", life.daily?.last_daily_plan_refresh_at],
-    ["last_auto_refresh_at", life.daily?.last_auto_refresh_at],
+    ["最近计划刷新", formatDate(life.daily?.last_daily_plan_refresh_at)],
+    ["最近自动刷新", formatDate(life.daily?.last_auto_refresh_at)],
   ]);
 
   const stale = life.stale_warning || {};
@@ -101,101 +168,117 @@ function renderLife(life) {
 
   const period = life.period || {};
   renderKV($("period-state"), [
-    ["current_period", period.current_period],
-    ["last_period_key", period.last_period_key],
-    ["last_period_refresh_at", period.last_period_refresh_at],
-    ["current_activity.value", period.current_activity?.value],
-    ["current_activity.mode", period.current_activity?.mode],
-    ["micro_experience", period.micro_experience],
-    ["ambient_mood", period.ambient_mood],
-    ["life_state", period.life_state],
-    ["energy_level", period.energy_level],
-    ["activity_hint", period.activity_hint],
-    ["mood_hint", period.mood_hint],
-    ["social_hint", period.social_hint],
-    ["relationship_hint", period.relationship_hint],
+    ["当前时段", period.current_period],
+    ["上一时段", period.last_period_key],
+    ["最近刷新", formatDate(period.last_period_refresh_at)],
+    ["当前活动", period.current_activity?.value],
+    ["活动模式", period.current_activity?.mode],
+    ["生活片段", period.micro_experience],
+    ["环境氛围", period.ambient_mood],
+    ["生活状态", period.life_state],
+    ["精力", period.energy_level],
+    ["活动提示", period.activity_hint],
+    ["情绪提示", period.mood_hint],
+    ["社交提示", period.social_hint],
+    ["关系提示", period.relationship_hint],
   ]);
 
   const refresh = life.refresh || {};
-  renderKV($("refresh-countdown"), [
-    ["auto_refresh_time", refresh.auto_refresh_time],
-    ["next_daily_refresh", withCountdown(refresh.next_daily_refresh_at)],
-    ["period_refresh_times", refresh.period_refresh_times],
-    ["next_period_refresh", withCountdown(refresh.next_period_refresh_at)],
-  ]);
+  const schedule = refresh.period_refresh_times || {};
+  const scheduleLabels = { morning: "上午", afternoon: "下午", evening: "晚上", night: "深夜" };
+  $("refresh-countdown").innerHTML = `
+    <div class="focus-row"><div><span class="kicker">下一次时段刷新</span><strong>${escapeHtml(countdownText(refresh.next_period_refresh_at))}</strong><small>${escapeHtml(formatDate(refresh.next_period_refresh_at))}</small></div>${statePill("自动刷新", true)}</div>
+    <div class="mini-metrics">
+      ${metricCard("每日计划", countdownText(refresh.next_daily_refresh_at), `固定 ${refresh.auto_refresh_time || "-"}`)}
+      ${metricCard("时段节点", `${Object.keys(schedule).length} 个`, "按生活节奏刷新")}
+    </div>
+    <div class="schedule-strip">${["morning", "afternoon", "evening", "night"].filter((key) => schedule[key]).map((key) => `<span><b>${escapeHtml(scheduleLabels[key])}</b>${escapeHtml(schedule[key])}</span>`).join("")}</div>
+    ${rawDetails("查看刷新配置", refresh)}
+  `;
 }
 
 function renderQzone(qzone) {
   const bridge = qzone.bridge || {};
-  renderKV($("bridge-state"), [
-    ["enabled", boolText(bridge.enabled)],
-    ["dry_run", boolText(bridge.dry_run)],
-    ["check_interval_minutes", bridge.check_interval_minutes],
-    ["post_windows", bridge.post_windows],
-    ["max_posts_per_day", bridge.max_posts_per_day],
-    ["min_hours_between_posts", bridge.min_hours_between_posts],
-    ["today_post_count", bridge.today_post_count],
-    ["last_check_at", bridge.last_check_at],
-    ["last_post_at", bridge.last_post_at],
-    ["last_window", bridge.last_window],
-    ["last_generated_text", bridge.last_generated_text],
-    ["last_error", bridge.last_error],
-  ]);
+  const windows = bridge.post_windows || [];
+  $("bridge-state").innerHTML = `
+    <div class="focus-row"><div><span class="kicker">运行状态</span><strong>${bridge.enabled ? "桥接已启用" : "桥接未启用"}</strong><small>${bridge.dry_run ? "当前为演练模式，不会实际发送" : "当前允许进入真实发送链路"}</small></div>${statePill(bridge.dry_run ? "演练模式" : "正式模式", !bridge.dry_run, bridge.dry_run)}</div>
+    <div class="mini-metrics">
+      ${metricCard("今日发布", `${bridge.today_post_count || 0} / ${bridge.max_posts_per_day || 0}`, "已用 / 上限")}
+      ${metricCard("检查间隔", `${bridge.check_interval_minutes || "-"} 分钟`, "后台调度频率")}
+      ${metricCard("发布冷却", `${bridge.min_hours_between_posts || "-"} 小时`, "两次发布最短间隔")}
+    </div>
+    <div class="window-list">${windows.map((window) => `<div class="window-chip"><div><b>${escapeHtml(windowLabel(window.name))}</b><span>${escapeHtml(window.start || "-")}–${escapeHtml(window.end || "-")}</span></div><strong>${escapeHtml(formatPercent(window.probability))}</strong></div>`).join("") || `<div class="empty-inline">暂无发布窗口</div>`}</div>
+    ${bridge.last_generated_text ? `<div class="soft-callout"><span>最近生成</span><p>${escapeHtml(compactText(bridge.last_generated_text, 220))}</p></div>` : ""}
+    ${rawDetails("查看桥接原始数据", bridge)}
+  `;
 
   const prediction = qzone.prediction || {};
-  renderKV($("trigger-prediction"), [
-    ["in_post_window", boolText(prediction.in_post_window)],
-    ["current_window", prediction.current_window],
-    ["current_probability", formatPercent(prediction.current_window_probability)],
-    ["next_check_eta", formatNextCheck(prediction.next_check_eta_minutes ?? prediction.next_check_in_minutes_approx)],
-    ["quota_available_today", prediction.quota_available_today ? "yes" : "no"],
-    ["cooldown", prediction.cooldown_satisfied ? "satisfied" : `until ${prediction.cooldown_until || "-"}`],
-    ["next_window", prediction.next_window],
-    ["chance_score", prediction.chance_score],
-    ["note", prediction.explanation],
-  ]);
+  const nextWindow = prediction.next_window || {};
+  const chance = String(prediction.chance_score || "Low");
+  const chanceLabel = { Low: "较低", Medium: "中等", High: "较高" }[chance] || chance;
+  $("trigger-prediction").innerHTML = `
+    <div class="focus-row"><div><span class="kicker">当前机会</span><strong>${escapeHtml(chanceLabel)}</strong><small>${prediction.in_post_window ? `正处于 ${prediction.current_window || "发布"} 窗口` : "当前不在发布窗口"}</small></div>${statePill(prediction.in_post_window ? "窗口内" : "等待中", prediction.in_post_window, !prediction.in_post_window)}</div>
+    <div class="probability-track"><span style="width:${Math.max(0, Math.min(100, Number(prediction.current_window_probability || 0) * 100))}%"></span></div>
+    <div class="mini-metrics">
+      ${metricCard("当前概率", formatPercent(prediction.current_window_probability), "仅表示命中机会")}
+      ${metricCard("下次检查", formatNextCheckZh(prediction.next_check_eta_minutes ?? prediction.next_check_in_minutes_approx), "自动执行")}
+    </div>
+    ${Object.keys(nextWindow).length ? `<div class="soft-callout"><span>下个窗口 · ${escapeHtml(windowLabel(nextWindow.name))}</span><p>${escapeHtml(nextWindow.start || "-")}–${escapeHtml(nextWindow.end || "-")} · 概率 ${escapeHtml(formatPercent(nextWindow.probability))} · ${escapeHtml(nextWindow.minutes_until ?? "-")} 分钟后</p></div>` : `<div class="empty-inline">今天没有后续发布窗口</div>`}
+    <div class="inline-status">${statePill(prediction.quota_available_today ? "今日有额度" : "今日额度已用完", prediction.quota_available_today)}${statePill(prediction.cooldown_satisfied ? "冷却已满足" : "冷却中", prediction.cooldown_satisfied)}</div>
+    ${prediction.explanation ? `<p class="helper-text">${escapeHtml(prediction.explanation)}</p>` : ""}
+    ${rawDetails("查看预测原始数据", prediction)}
+  `;
 
   const health = qzone.health || {};
-  renderKV($("send-health"), [
-    ["cookie configured", boolText(health.cookie_configured)],
-    ["cookie_has_p_skey", boolText(health.cookie_has_p_skey)],
-    ["cookie_len", health.cookie_len],
-    ["fallback_cookie configured", boolText(health.fallback_cookie_configured)],
-    ["will_use_send_path", boolText(health.will_use_send_path)],
-    ["last_error", bridge.last_error || health.last_error],
-  ]);
+  const sendReady = Boolean(health.will_use_send_path);
+  const healthError = bridge.last_error || health.last_error;
+  $("send-health").innerHTML = `
+    <div class="focus-row"><div><span class="kicker">链路判断</span><strong>${sendReady ? "可以发送" : "暂不发送"}</strong><small>${healthError ? escapeHtml(compactText(healthError, 120)) : "未检测到近期错误"}</small></div>${statePill(sendReady ? "就绪" : "未就绪", sendReady)}</div>
+    <div class="health-checks">
+      <div><span>主 Cookie</span>${statePill(health.cookie_configured ? "已配置" : "未配置", health.cookie_configured)}</div>
+      <div><span>p_skey</span>${statePill(health.cookie_has_p_skey ? "可用" : "缺失", health.cookie_has_p_skey)}</div>
+      <div><span>备用 Cookie</span>${statePill(health.fallback_cookie_configured ? "已配置" : "未配置", health.fallback_cookie_configured)}</div>
+    </div>
+    ${rawDetails("查看链路诊断", health)}
+  `;
 
   const history = qzone.history || [];
   $("history-list").innerHTML = history.length ? history.map((item) => `
     <div class="history-item">
-      <div class="meta">${escapeHtml(text(item.at))} | ${escapeHtml(text(item.kind))} | ${escapeHtml(text(item.result))} | ${escapeHtml(text(item.window))}</div>
-      <div class="text">${escapeHtml(text(item.text))}</div>
-      <div class="meta">${escapeHtml(text(item.detail, ""))}</div>
+      <div class="history-head"><span>${escapeHtml(formatDate(item.at))}</span>${historyResultBadge(item.result)}</div>
+      <div class="text">${escapeHtml(compactText(item.text, 180) || historyResultLabel(item.result))}</div>
+      <div class="meta">${escapeHtml([item.kind === "scheduler" ? "自动调度" : item.kind, item.window ? windowLabel(item.window) : ""].filter(Boolean).join(" · "))}</div>
+      ${item.detail ? rawDetails("查看执行详情", item.detail) : ""}
     </div>
-  `).join("") : `<div class="history-item">No history</div>`;
+  `).join("") : `<div class="empty-state simple-empty">暂无执行记录</div>`;
 
   const timeline = qzone.today_check_timeline || [];
   if (timeline.length) {
     $("history-list").insertAdjacentHTML("beforeend", `
       <div class="history-item">
-        <div class="meta">today_check_timeline</div>
-        <div class="text">${escapeHtml(timeline.map((item) => `${item.at} ${item.type} ${item.window || ""}`).join("\n"))}</div>
+        <div class="history-head"><span>今日检查时间线</span><span class="badge info">${timeline.length} 次</span></div>
+        <div class="timeline-strip">${timeline.slice(-12).map((item) => `<span title="${escapeHtml(item.type || "")}">${escapeHtml(new Date(item.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>`).join("")}</div>
+        ${rawDetails("查看完整时间线", timeline)}
       </div>
     `);
   }
 }
 
 function renderMemory(memory) {
-  renderKV($("memory-summary"), [
-    ["enabled", boolText(memory.enabled)],
-    ["recent 24h repeat_rate", formatPercent(memory.repeat_rate_24h)],
-    ["days", memory.days || []],
-    ["status", memory.overfit_warning ? "possible overfit" : "normal"],
-  ]);
+  const days = memory.days || [];
+  $("memory-summary").innerHTML = `
+    <div class="focus-row"><div><span class="kicker">内容健康</span><strong>${memory.overfit_warning ? "需要检查重复" : "状态自然"}</strong><small>${memory.enabled ? "生活碎片正在低频积累" : "生活记忆未启用"}</small></div>${statePill(memory.overfit_warning ? "可能重复" : "正常", !memory.overfit_warning)}</div>
+    <div class="mini-metrics">
+      ${metricCard("近 24h 重复率", formatPercent(memory.repeat_rate_24h), memory.overfit_warning ? "建议检查来源" : "处于正常范围")}
+      ${metricCard("保留天数", `${days.length} 天`, "当前可读取")}
+    </div>
+    <div class="day-memory-list">${days.slice(0, 5).map((day) => `<div><span>${escapeHtml(day.date || "未知日期")}</span><p>${escapeHtml(compactText(day.micro_experience || day.text || day.carry_over_trace, 120) || "暂无生活片段")}</p></div>`).join("") || `<div class="empty-inline">暂无按日生活记忆</div>`}</div>
+    ${rawDetails("查看生活记忆原始数据", memory)}
+  `;
   const traces = memory.recent_traces || [];
   $("memory-traces").innerHTML = traces.length ? traces.map((trace) => `
-    <div class="trace-item">${escapeHtml(text(trace))}</div>
-  `).join("") : `<div class="trace-item">No recent_traces</div>`;
+    <div class="trace-item"><span class="trace-mark"></span>${escapeHtml(compactText(typeof trace === "object" ? (trace.text || trace.micro_experience || trace.carry_over_trace || JSON.stringify(trace)) : trace, 160))}</div>
+  `).join("") : `<div class="empty-inline">暂无最近生活片段</div>`;
 }
 
 function renderHealth(health) {
@@ -207,7 +290,8 @@ function renderHealth(health) {
     return;
   }
   strip.classList.remove("hidden");
-  strip.innerHTML = warnings.map((item) => `<span class="pill ${item.level || "yellow"}">${escapeHtml(item.kind)}</span> ${escapeHtml(item.message)}`).join("<br>");
+  const warningLabels = { period_stale: "状态过期", bridge_errors: "桥接异常", memory_overfit: "记忆重复" };
+  strip.innerHTML = warnings.map((item) => `<span class="pill ${item.level || "yellow"}">${escapeHtml(warningLabels[item.kind] || item.kind)}</span> ${escapeHtml(item.message)}`).join("<br>");
 }
 
 async function loadAll() {
@@ -701,6 +785,25 @@ function renderMemoryManager() {
       <td><span class="badge ${memoryStatusClass(item)}">${escapeHtml(memoryStatusLabel(item))}</span></td>
     </tr>
   `).join("") : `<tr><td colspan="6" class="table-empty">没有符合条件的记忆</td></tr>`;
+  renderMemoryCandidates(
+    (payload.candidates || []).filter((item) => !scope || item.scope_ref === scope),
+    Boolean(payload.editable),
+  );
+}
+
+function renderMemoryCandidates(candidates, editable) {
+  $("memory-candidate-count").textContent = `${candidates.length} 条`;
+  $("memory-candidate-list").innerHTML = candidates.length ? candidates.map((item) => `
+    <article class="content-item">
+      <div class="card-heading"><strong>${escapeHtml(item.content || "暂无内容")}</strong><span class="badge info">${escapeHtml(memoryTypeLabel(item.suggested_type))}</span></div>
+      <p>${escapeHtml(item.reason || "等待审核")}</p>
+      <div class="meta">${escapeHtml(item.scope_label)} · 可信度 ${Math.round(Number(item.confidence || 0) * 100)}% · 重要性 ${Math.round(Number(item.importance || 0) * 100)}% · 稳定性 ${Math.round(Number(item.stability || 0) * 100)}% · 证据 ${escapeHtml(item.evidence_count || 1)} 次</div>
+      <div class="candidate-actions">
+        <button class="secondary-button candidate-reject" type="button" data-candidate-id="${escapeHtml(item.id)}" data-scope-ref="${escapeHtml(item.scope_ref)}" ${editable ? "" : "disabled"}>拒绝</button>
+        <button class="primary-button candidate-approve" type="button" data-candidate-id="${escapeHtml(item.id)}" data-scope-ref="${escapeHtml(item.scope_ref)}" ${editable ? "" : "disabled"}>确认记住</button>
+      </div>
+    </article>
+  `).join("") : `<div class="empty-state simple-empty">暂无候选记忆</div>`;
 }
 
 function memoryTypeLabel(type) {
@@ -720,7 +823,8 @@ function memoryStatusClass(item) {
 
 function formatDate(value) {
   if (!value) return "-";
-  const date = new Date(value);
+  const clean = String(value).replace(/\s+\([^)]*\)\s*$/, "");
+  const date = new Date(clean);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString([], { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
@@ -742,9 +846,12 @@ function openMemoryDrawer(item = null) {
   $("memory-form-use-rule").value = item?.use_rule || "";
   $("memory-form-tone").value = item?.tone || "";
   $("memory-form-confidence").value = item?.confidence ?? 0.8;
+  $("memory-form-importance").value = item?.importance ?? 0.6;
+  $("memory-form-stability").value = item?.stability ?? 0.6;
+  $("memory-form-sensitivity").value = item?.sensitivity || "low";
   $("memory-form-ttl").value = item?.ttl_days || "";
-  updateConfidenceOutput();
-  $("memory-form-meta").textContent = item ? `来源：${item.source || "-"} · 创建：${formatDate(item.created_at)} · 已调用 ${item.used_count || 0} 次` : "新增内容会写入所选会话的长期记忆库。";
+  updateMemoryScoreOutputs();
+  $("memory-form-meta").textContent = item ? `来源：${item.source || "-"} · 创建：${formatDate(item.created_at)} · 到期：${formatDate(item.expires_at)} · 证据 ${item.evidence_count || 1} 次 · 已调用 ${item.used_count || 0} 次` : "新增内容会写入所选会话的长期记忆库。";
 
   for (const control of $("memory-form").querySelectorAll("input:not([type=hidden]), textarea, select")) {
     if (control.id !== "memory-form-scope" || item) control.disabled = !editable;
@@ -779,8 +886,10 @@ function closeMemoryDrawer() {
   state.selectedMemory = null;
 }
 
-function updateConfidenceOutput() {
+function updateMemoryScoreOutputs() {
   $("memory-confidence-output").value = `${Math.round(Number($("memory-form-confidence").value || 0) * 100)}%`;
+  $("memory-importance-output").value = `${Math.round(Number($("memory-form-importance").value || 0) * 100)}%`;
+  $("memory-stability-output").value = `${Math.round(Number($("memory-form-stability").value || 0) * 100)}%`;
 }
 
 function memoryFormPayload() {
@@ -792,6 +901,9 @@ function memoryFormPayload() {
     use_rule: $("memory-form-use-rule").value.trim(),
     tone: $("memory-form-tone").value.trim(),
     confidence: Number($("memory-form-confidence").value),
+    importance: Number($("memory-form-importance").value),
+    stability: Number($("memory-form-stability").value),
+    sensitivity: $("memory-form-sensitivity").value,
     ttl_days: $("memory-form-ttl").value ? Number($("memory-form-ttl").value) : null,
   };
 }
@@ -961,12 +1073,30 @@ $("new-memory")?.addEventListener("click", () => openMemoryDrawer());
 $("memory-drawer-close")?.addEventListener("click", closeMemoryDrawer);
 $("memory-form-cancel")?.addEventListener("click", closeMemoryDrawer);
 $("memory-drawer-backdrop")?.addEventListener("click", closeMemoryDrawer);
-$("memory-form-confidence")?.addEventListener("input", updateConfidenceOutput);
+for (const id of ["memory-form-confidence", "memory-form-importance", "memory-form-stability"]) {
+  $(id)?.addEventListener("input", updateMemoryScoreOutputs);
+}
+
+async function decideMemoryCandidate(candidateId, scopeRef, action) {
+  await fetchApi(`/api/memory-candidates/${encodeURIComponent(candidateId)}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ scope_ref: scopeRef }),
+  });
+  showToast(action === "approve" ? "候选已转为长期记忆" : "候选已拒绝");
+  await refreshMemoryViews();
+}
 $("memory-form")?.addEventListener("submit", (event) => {
   saveMemory(event).catch((error) => showToast(error?.message || error, true));
 });
 $("memory-form-archive")?.addEventListener("click", () => {
   toggleMemoryArchive().catch((error) => showToast(error?.message || error, true));
+});
+$("memory-candidate-list")?.addEventListener("click", (event) => {
+  const button = event.target.closest(".candidate-approve, .candidate-reject");
+  if (!button) return;
+  const action = button.classList.contains("candidate-approve") ? "approve" : "reject";
+  decideMemoryCandidate(button.dataset.candidateId, button.dataset.scopeRef, action)
+    .catch((error) => showToast(error?.message || error, true));
 });
 $("memory-preview-button")?.addEventListener("click", () => {
   previewMemoryMatch().catch((error) => showToast(error?.message || error, true));

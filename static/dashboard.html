@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>阿绫控制台</title>
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=0.3.0">
 </head>
 <body>
   <div class="app-shell">
@@ -48,8 +48,8 @@
         <section id="life" class="page-section">
           <div class="section-heading"><div><span class="eyebrow">Today</span><h2>今日状态</h2></div><p>阿绫今天的生活舞台与当前状态</p></div>
           <div class="grid two">
-            <article class="card"><h3>今日 daily_plan</h3><div id="daily-plan" class="plan-grid"></div><dl class="kv" id="daily-meta"></dl></article>
-            <article class="card"><h3>当前 period 状态</h3><div id="period-warning" class="inline-warning hidden"></div><dl class="kv" id="period-state"></dl></article>
+            <article class="card"><h3>今日安排</h3><div id="daily-plan" class="plan-grid"></div><dl class="kv" id="daily-meta"></dl></article>
+            <article class="card"><h3>此刻状态</h3><div id="period-warning" class="inline-warning hidden"></div><dl class="kv" id="period-state"></dl></article>
           </div>
         </section>
 
@@ -73,6 +73,11 @@
               </table>
             </div>
             <div class="manager-footer"><span id="memory-count">共 0 条</span><span>点击记忆可查看和编辑</span></div>
+          </article>
+
+          <article class="card candidate-review-card">
+            <div class="card-heading"><div><h3>候选记忆审核</h3><p class="note">尚未达到自动保存条件的内容会留在这里，可人工确认或拒绝。</p></div><span id="memory-candidate-count" class="badge info">0 条</span></div>
+            <div id="memory-candidate-list" class="content-list"><div class="empty-state simple-empty">暂无候选记忆</div></div>
           </article>
 
           <article class="card retrieval-card">
@@ -127,12 +132,12 @@
         <section id="qzone" class="page-section">
           <div class="section-heading"><div><span class="eyebrow">Qzone</span><h2>QQ 空间状态</h2></div><p>触发窗口、发送链路与最近历史</p></div>
           <div class="grid two">
-            <article class="card"><h3>刷新倒计时</h3><dl class="kv" id="refresh-countdown"></dl></article>
-            <article class="card"><h3>随机触发预测</h3><dl class="kv" id="trigger-prediction"></dl></article>
-            <article class="card"><h3>QQ 空间 bridge</h3><dl class="kv" id="bridge-state"></dl></article>
-            <article class="card"><h3>发送链路健康</h3><dl class="kv" id="send-health"></dl></article>
+            <article class="card"><h3>刷新计划</h3><div class="panel-stack" id="refresh-countdown"></div></article>
+            <article class="card"><h3>下一次发布机会</h3><div class="panel-stack" id="trigger-prediction"></div></article>
+            <article class="card"><h3>QQ 空间桥接</h3><div class="panel-stack" id="bridge-state"></div></article>
+            <article class="card"><h3>发送链路</h3><div class="panel-stack" id="send-health"></div></article>
             <article class="card"><h3>最近历史</h3><div id="history-list" class="history-list"></div></article>
-            <article class="card"><h3>shared_life_memory</h3><dl class="kv" id="memory-summary"></dl><div id="memory-traces" class="trace-list"></div></article>
+            <article class="card"><h3>生活记忆概览</h3><div class="panel-stack" id="memory-summary"></div><div id="memory-traces" class="trace-list"></div></article>
           </div>
         </section>
       </main>
@@ -148,12 +153,19 @@
       <label>记忆内容<textarea id="memory-form-content" rows="5" maxlength="1000" required></textarea><small>保持简短、明确，只记录稳定且值得长期使用的信息。</small></label>
       <div class="form-grid">
         <label>记忆类型<select id="memory-form-type" required><option value="small_memory">小记忆</option><option value="preference_memory">偏好</option><option value="relationship_memory">关系边界</option><option value="life_signal">生活规律</option><option value="project_context">项目背景</option><option value="context_summary">上下文摘要</option></select></label>
-        <label>有效期（天）<input id="memory-form-ttl" type="number" min="1" max="3650" placeholder="留空不过期"></label>
+        <label>有效期（天）<input id="memory-form-ttl" type="number" min="1" max="3650" placeholder="留空不过期"><small>从本次保存开始重新计算。</small></label>
       </div>
       <label>标签<input id="memory-form-tags" type="text" maxlength="400" placeholder="使用逗号分隔，例如：论文, 学习"></label>
       <label>使用规则<textarea id="memory-form-use-rule" rows="3" maxlength="500" placeholder="例如：只在用户主动聊论文时使用"></textarea></label>
       <label>语气提示<input id="memory-form-tone" type="text" maxlength="200" placeholder="例如：自然接住，不催促"></label>
-      <label>可信度 <output id="memory-confidence-output">80%</output><input id="memory-form-confidence" type="range" min="0" max="1" step="0.05" value="0.8"></label>
+      <div class="form-grid">
+        <label>重要性 <output id="memory-importance-output">60%</output><input id="memory-form-importance" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+        <label>稳定性 <output id="memory-stability-output">60%</output><input id="memory-form-stability" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+      </div>
+      <div class="form-grid">
+        <label>可信度 <output id="memory-confidence-output">80%</output><input id="memory-form-confidence" type="range" min="0" max="1" step="0.05" value="0.8"></label>
+        <label>敏感等级<select id="memory-form-sensitivity"><option value="low">低</option><option value="medium">中</option><option value="high">高（不参与召回）</option></select></label>
+      </div>
       <div id="memory-form-meta" class="form-meta"></div>
       <div class="drawer-actions">
         <button id="memory-form-cancel" class="secondary-button" type="button">取消</button>
@@ -164,6 +176,6 @@
   </aside>
 
   <div id="dashboard-toast" class="toast hidden" role="status"></div>
-  <script src="/static/dashboard.js"></script>
+  <script src="/static/dashboard.js?v=0.3.0"></script>
 </body>
 </html>
