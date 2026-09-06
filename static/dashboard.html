@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>阿绫控制台</title>
-  <link rel="stylesheet" href="/static/dashboard.css?v=0.3.0">
+  <link rel="stylesheet" href="/static/dashboard.css?v=0.3.1">
 </head>
 <body>
   <div class="app-shell">
@@ -77,7 +77,7 @@
 
           <article class="card candidate-review-card">
             <div class="card-heading"><div><h3>候选记忆审核</h3><p class="note">尚未达到自动保存条件的内容会留在这里，可人工确认或拒绝。</p></div><span id="memory-candidate-count" class="badge info">0 条</span></div>
-            <div id="memory-candidate-list" class="content-list"><div class="empty-state simple-empty">暂无候选记忆</div></div>
+            <div><div id="memory-candidate-notice" class="manager-notice hidden"></div><div id="memory-candidate-list" class="content-list"><div class="empty-state simple-empty">暂无候选记忆</div></div></div>
           </article>
 
           <article class="card retrieval-card">
@@ -98,9 +98,9 @@
               <p class="note" id="continuity-summary"></p><div id="continuity-layers" class="layer-list"></div>
               <details class="detail-panel"><summary>查看模块关系矩阵</summary><div class="table-wrap"><table class="matrix-table"><thead><tr><th>模块</th><th>负责什么</th><th>读取谁</th><th>写入谁</th><th>注入块</th><th>风险</th></tr></thead><tbody id="continuity-matrix"></tbody></table></div></details>
             </article>
-            <article class="card"><div class="card-heading"><h3>shared_life_context</h3><span id="slc-badge" class="badge unknown">未知</span></div><p class="note">阿绫今日生活舞台，不是用户记忆库。</p><dl class="kv" id="continuity-slc"></dl></article>
-            <article class="card"><div class="card-heading"><h3>Inner Continuity</h3><span id="inner-badge" class="badge unknown">未知</span></div><p class="note">保存短期心理余波，不写入 SLC 或长期记忆。</p><dl class="kv" id="inner-config"></dl><dl class="kv" id="inner-metrics"></dl><div id="inner-warnings" class="mini-list"></div></article>
-            <article class="card"><div class="card-heading"><h3>Aling Memory</h3><span id="aling-memory-badge" class="badge unknown">未知</span></div><p class="note">负责长期小记忆、User Life Mirror 与 recent_trace。</p><dl class="kv" id="aling-memory-config"></dl><dl class="kv" id="aling-memory-metrics"></dl><div id="aling-memory-warnings" class="mini-list"></div></article>
+            <article class="card"><div class="card-heading"><div><span class="card-kicker">今天 · 场景层</span><h3>生活舞台</h3></div><span id="slc-badge" class="badge unknown">未知</span></div><div class="panel-stack" id="continuity-slc"></div></article>
+            <article class="card"><div class="card-heading"><div><span class="card-kicker">最近几轮 · 短期层</span><h3>心理余波</h3></div><span id="inner-badge" class="badge unknown">未知</span></div><div class="panel-stack" id="inner-overview"></div><div id="inner-warnings" class="mini-list"></div></article>
+            <article class="card"><div class="card-heading"><div><span class="card-kicker">长期 · 记忆层</span><h3>长期记忆</h3></div><span id="aling-memory-badge" class="badge unknown">未知</span></div><div class="panel-stack" id="aling-memory-overview"></div><div id="aling-memory-warnings" class="mini-list"></div></article>
             <article class="card"><div class="card-heading"><h3>协作健康检查</h3><span id="continuity-health-badge" class="badge unknown">未知</span></div><p class="note" id="continuity-health-summary"></p><div id="continuity-health-checks" class="check-list"></div></article>
           </div>
 
@@ -176,6 +176,6 @@
   </aside>
 
   <div id="dashboard-toast" class="toast hidden" role="status"></div>
-  <script src="/static/dashboard.js?v=0.3.0"></script>
+  <script src="/static/dashboard.js?v=0.3.1"></script>
 </body>
 </html>

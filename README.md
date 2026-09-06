@@ -11,6 +11,8 @@ WebUI Dashboard，用于观察阿绫插件状态，并在显式授权后管理�
 
 Dashboard 默认只读。只有同时满足“已设置 Dashboard 密码”和“开启 `memory_edit_enabled`”时，才允许新增、修改、归档或恢复 `aling_memory` 记忆。
 
+候选审核区会明确显示当前是否处于只读模式。只读时点击“拒绝”或“确认记住”会提示需要开启 `memory_edit_enabled`，避免按钮无反馈。
+
 无论是否开启记忆编辑，本插件都不会：
 
 - 发送 QQ 空间

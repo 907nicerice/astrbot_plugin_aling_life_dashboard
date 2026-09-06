@@ -1,5 +1,5 @@
 name: astrbot_plugin_aling_life_dashboard
 desc: WebUI dashboard for Aling life state, continuity diagnostics, and opt-in memory management.
-version: 0.3.0
+version: 0.3.1
 author: Codex
 repo: https://github.com/907nicerice/astrbot_plugin_aling_life_dashboard

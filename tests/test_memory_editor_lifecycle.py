@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from astrbot_plugin_aling_life_dashboard.webui.memory_editor import MemoryEditor
+from astrbot_plugin_aling_life_dashboard.webui.memory_editor import MemoryEditor, MemoryEditorError
 
 
 class MemoryEditorLifecycleTests(unittest.TestCase):
@@ -78,6 +78,39 @@ class MemoryEditorLifecycleTests(unittest.TestCase):
             self.assertEqual(item["source"], "dashboard_approved")
             self.assertEqual(item["evidence_count"], 2)
             self.assertEqual(editor.snapshot()["candidate_count"], 0)
+
+    def test_candidate_actions_are_blocked_in_read_only_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "memory_store.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "scopes": {
+                            "private:user": {
+                                "memories": [],
+                                "candidates": [
+                                    {
+                                        "id": "cand_locked",
+                                        "suggested_type": "small_memory",
+                                        "content": "一条待审核记忆",
+                                    }
+                                ],
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            editor = MemoryEditor(lambda: path, lambda: False)
+            snapshot = editor.snapshot()
+            self.assertFalse(snapshot["editable"])
+            scope_ref = snapshot["scopes"][0]["ref"]
+            with self.assertRaises(MemoryEditorError) as caught:
+                editor.approve_candidate("cand_locked", {"scope_ref": scope_ref})
+            self.assertEqual(caught.exception.code, "editing_disabled")
+            self.assertEqual(editor.snapshot()["candidate_count"], 1)
 
 
 if __name__ == "__main__":

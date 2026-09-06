@@ -120,6 +120,26 @@ function windowLabel(value) {
   return labels[String(value || "")] || text(value, "未命名");
 }
 
+function featurePill(label, enabled) {
+  return `<span class="feature-pill ${enabled ? "on" : "off"}"><i></i>${escapeHtml(label)}</span>`;
+}
+
+function continuityCheckCopy(check) {
+  const name = String(check?.name || "");
+  const copies = {
+    inner_reads_slc: ["读取生活舞台", "短期余波会参考今天的生活状态。", "短期余波尚未读取今天的生活状态。"],
+    inner_injection_budget: ["短期注入长度", "短期上下文长度处于安全范围。", "短期上下文可能过长，需要检查。"],
+    memory_recent_trace_budget: ["近期痕迹长度", "近期痕迹的条数与长度处于安全范围。", "近期痕迹可能注入过多。"],
+    memory_flashback_rate: ["回想频率", "回想间隔与每日次数处于合理范围。", "回想可能过于频繁。"],
+    slc_overuse_risk: ["生活状态使用", "生活状态只作为轻量背景，不会主导回复。", "生活状态可能被过度使用。"],
+    overlap_warning: ["重复回想风险", "短期余波与长期记忆的职责没有明显重叠。", "短期余波和长期记忆都可能重复提起旧话题，建议降低回想频率。"],
+  };
+  const copy = copies[name];
+  if (!copy) return { title: name || "未知检查", message: check?.message || "暂无说明" };
+  const healthy = ["ok", "info"].includes(String(check?.status || "").toLowerCase());
+  return { title: copy[0], message: healthy ? copy[1] : copy[2] };
+}
+
 function renderStatus(status) {
   const interval = Math.max(3, Number(status.refresh_interval_seconds) || 10);
   if (interval !== state.refreshIntervalSeconds) {
@@ -330,18 +350,23 @@ function renderContinuity(continuity) {
   setBadge("aling-memory-badge", memory.status || "unknown");
   setBadge("continuity-health-badge", health.status || "unknown");
 
-  $("continuity-summary").textContent = relationship.summary || "-";
-  $("continuity-health-summary").textContent = health.summary || "-";
+  $("continuity-summary").textContent = "三个层次各管一件事：生活舞台描述今天，心理余波承接刚才，长期记忆保存稳定事实。";
+  $("continuity-health-summary").textContent = health.status === "ok" ? "目前没有发现职责冲突。" : "发现需要留意的协作项，建议按下方提示检查。";
 
   const layers = relationship.layers || [];
-  $("continuity-layers").innerHTML = layers.length ? layers.map((layer) => `
-    <div class="layer-item">
-      <b>${escapeHtml(layer.name)}</b>
-      <div>${escapeHtml(layer.role || "-")}</div>
-      <div class="meta">reads: ${escapeHtml(text(layer.reads || []))}</div>
-      <div class="meta">writes: ${escapeHtml(text(layer.writes || []))}</div>
+  const layerNames = { shared_life_context: "生活舞台", inner_continuity: "心理余波", aling_memory: "长期记忆" };
+  const layerTimes = { shared_life_context: "今天", inner_continuity: "最近几轮", aling_memory: "长期" };
+  const layerBoundaries = {
+    shared_life_context: "只保存阿绫当天状态",
+    inner_continuity: "只保存短期情绪与细节",
+    aling_memory: "只保存稳定事实与共同经历",
+  };
+  $("continuity-layers").innerHTML = layers.length ? layers.map((layer, index) => `
+    <div class="layer-item continuity-layer">
+      <div class="layer-index">${index + 1}</div>
+      <div><span>${escapeHtml(layerTimes[layer.name] || "独立层")}</span><b>${escapeHtml(layerNames[layer.name] || layer.name)}</b><p>${escapeHtml(layer.role || "-")}</p><small>${escapeHtml(layerBoundaries[layer.name] || "边界清晰")}</small></div>
     </div>
-  `).join("") : `<div class="layer-item">No relationship data</div>`;
+  `).join("") : `<div class="empty-inline">暂无协作关系数据</div>`;
 
   const matrix = relationship.matrix || [];
   $("continuity-matrix").innerHTML = matrix.map((row) => `
@@ -355,77 +380,51 @@ function renderContinuity(continuity) {
     </tr>
   `).join("");
 
-  renderKV($("continuity-slc"), [
-    ["detected", boolText(slc.detected)],
-    ["status", slc.status],
-    ["last_refresh_at", slc.last_refresh_at],
-    ["current_period", slc.current_period],
-    ["current_activity", slc.current_activity?.value],
-    ["energy_level", slc.energy_level],
-    ["ambient_mood", slc.ambient_mood],
-    ["data_source", slc.data_source],
-    ["last_error", slc.last_error],
-    ["inner reads SLC", slc.read_by?.inner_continuity_message],
-    ["aling_memory reads SLC", slc.read_by?.aling_memory_message],
-  ]);
+  $("continuity-slc").innerHTML = `
+    <div class="focus-row"><div><span class="kicker">此刻活动</span><strong class="continuity-focus">${escapeHtml(slc.current_activity?.value || "暂无活动记录")}</strong><small>${escapeHtml(slc.ambient_mood || "暂无氛围描述")}</small></div>${statePill(slc.detected ? "已连接" : "未连接", slc.detected)}</div>
+    <div class="mini-metrics">
+      ${metricCard("当前时段", slc.current_period || "-", "今天的时间位置")}
+      ${metricCard("精力状态", slc.energy_level || "-", "用于调整生活节奏")}
+      ${metricCard("最近刷新", slc.last_refresh_at ? formatDate(slc.last_refresh_at) : "-", "生活状态更新时间")}
+    </div>
+    <p class="boundary-note">只提供阿绫今天的生活背景，不保存用户长期记忆。</p>
+    ${rawDetails("查看生活舞台诊断", slc)}
+  `;
 
-  renderKV($("inner-config"), [
-    ["enabled", boolText(inner.config?.enabled)],
-    ["inject_enabled", boolText(inner.config?.inject_enabled)],
-    ["update_enabled", boolText(inner.config?.update_enabled)],
-    ["use_llm_update", boolText(inner.config?.use_llm_update)],
-    ["read_shared_life_context", boolText(inner.config?.read_shared_life_context)],
-    ["max_injected_chars", inner.config?.max_injected_chars],
-    ["default_ttl_minutes", inner.config?.default_ttl_minutes],
-    ["flashback_cooldown_seconds", inner.config?.flashback_cooldown_seconds],
-  ]);
-  renderKV($("inner-metrics"), [
-    ["state_file_count", inner.metrics?.state_file_count],
-    ["latest_state_updated_at", inner.metrics?.latest_state_updated_at],
-    ["active_state_count", inner.metrics?.active_state_count],
-    ["expired_or_old_state_count", inner.metrics?.expired_or_old_state_count],
-    ["total_residue_items", inner.metrics?.total_residue_items],
-    ["total_micro_details", inner.metrics?.total_micro_details],
-    ["total_flashback_candidates", inner.metrics?.total_flashback_candidates],
-    ["latest summary", inner.latest_summary],
-  ]);
+  $("inner-overview").innerHTML = `
+    <div class="focus-row"><div><span class="kicker">短期状态</span><strong>${escapeHtml(`${inner.metrics?.active_state_count || 0} 条活跃余波`)}</strong><small>过期 ${escapeHtml(inner.metrics?.expired_or_old_state_count || 0)} 条 · 最近更新 ${escapeHtml(formatDate(inner.metrics?.latest_state_updated_at))}</small></div>${statePill(inner.config?.enabled ? "运行中" : "未启用", inner.config?.enabled)}</div>
+    <div class="mini-metrics">
+      ${metricCard("情绪余波", text(inner.metrics?.total_residue_items, "0"), "尚未消散的小情绪")}
+      ${metricCard("细节碎片", text(inner.metrics?.total_micro_details, "0"), "刚才对话的小细节")}
+      ${metricCard("回想候选", text(inner.metrics?.total_flashback_candidates, "0"), "可能自然提起的内容")}
+    </div>
+    <div class="feature-list">${featurePill("写入短期状态", inner.config?.update_enabled)}${featurePill("注入回复上下文", inner.config?.inject_enabled)}${featurePill("参考生活舞台", inner.config?.read_shared_life_context)}${featurePill("LLM 整理", inner.config?.use_llm_update)}</div>
+    <p class="boundary-note">默认保留 ${escapeHtml(inner.config?.default_ttl_minutes || "-")} 分钟；不会写入长期记忆。</p>
+    ${rawDetails("查看短期层原始数据", inner)}
+  `;
   renderMiniList("inner-warnings", inner.warnings || [], inner.errors || []);
 
-  renderKV($("aling-memory-config"), [
-    ["enabled", boolText(memory.config?.enabled)],
-    ["auto_extract_enabled", boolText(memory.config?.auto_extract_enabled)],
-    ["context_summary_enabled", boolText(memory.config?.context_summary_enabled)],
-    ["mirror_enabled", boolText(memory.config?.mirror_enabled)],
-    ["recent_trace_enabled", boolText(memory.config?.recent_trace_enabled)],
-    ["recent_trace_ttl_hours", memory.config?.recent_trace_ttl_hours],
-    ["recent_trace_inject_max_items", memory.config?.recent_trace_inject_max_items],
-    ["recent_trace_inject_max_chars", memory.config?.recent_trace_inject_max_chars],
-    ["flashback_min_turn_gap", memory.config?.flashback_min_turn_gap],
-    ["same_memory_min_hours", memory.config?.same_memory_min_hours],
-    ["max_flashback_per_day", memory.config?.max_flashback_per_day],
-  ]);
-  renderKV($("aling-memory-metrics"), [
-    ["memory_scope_count", memory.metrics?.memory_scope_count],
-    ["memory_item_count", memory.metrics?.memory_item_count],
-    ["candidate_count", memory.metrics?.candidate_count],
-    ["mirror_slice_count", memory.metrics?.mirror_slice_count],
-    ["summary_count", memory.metrics?.summary_count],
-    ["recent_trace_scope_count", memory.metrics?.recent_trace_scope_count],
-    ["recent_trace_item_count", memory.metrics?.recent_trace_item_count],
-    ["flashback_state_count", memory.metrics?.flashback_state_count],
-    ["latest_memory_updated_at", memory.metrics?.latest_memory_updated_at],
-    ["latest_recent_trace_updated_at", memory.metrics?.latest_recent_trace_updated_at],
-    ["type_distribution", memory.metrics?.type_distribution],
-  ]);
+  $("aling-memory-overview").innerHTML = `
+    <div class="focus-row"><div><span class="kicker">长期记忆库</span><strong>${escapeHtml(`${memory.metrics?.memory_item_count || 0} 条记忆`)}</strong><small>${escapeHtml(memory.metrics?.memory_scope_count || 0)} 个会话 · 最近更新 ${escapeHtml(formatDate(memory.metrics?.latest_memory_updated_at))}</small></div>${statePill(memory.config?.enabled ? "运行中" : "未启用", memory.config?.enabled)}</div>
+    <div class="mini-metrics">
+      ${metricCard("待审核", text(memory.metrics?.candidate_count, "0"), "需要人工判断")}
+      ${metricCard("近期痕迹", text(memory.metrics?.recent_trace_item_count, "0"), `保留 ${memory.config?.recent_trace_ttl_hours || "-"} 小时`)}
+      ${metricCard("上下文摘要", text(memory.metrics?.summary_count, "0"), "压缩较长对话")}
+    </div>
+    <div class="feature-list">${featurePill("自动提取", memory.config?.auto_extract_enabled)}${featurePill("人生镜像", memory.config?.mirror_enabled)}${featurePill("近期痕迹", memory.config?.recent_trace_enabled)}${featurePill("上下文摘要", memory.config?.context_summary_enabled)}</div>
+    <p class="boundary-note">只保存稳定事实、偏好和共同经历；不会记录当天生活状态。</p>
+    ${rawDetails("查看长期层原始数据", memory)}
+  `;
   renderMiniList("aling-memory-warnings", memory.warnings || [], memory.errors || []);
 
   const checks = health.checks || [];
-  $("continuity-health-checks").innerHTML = checks.length ? checks.map((check) => `
-    <div class="check-item">
-      <b>${escapeHtml(check.name)} <span class="badge ${statusClass(check.status)}">${escapeHtml(check.status)}</span></b>
-      <div>${escapeHtml(check.message)}</div>
+  $("continuity-health-checks").innerHTML = checks.length ? checks.map((check) => {
+    const copy = continuityCheckCopy(check);
+    return `<div class="check-item continuity-check">
+      <div><b>${escapeHtml(copy.title)}</b><p>${escapeHtml(copy.message)}</p></div>
+      <span class="badge ${statusClass(check.status)}">${escapeHtml(statusLabel(check.status))}</span>
     </div>
-  `).join("") : `<div class="check-item">No checks</div>`;
+  `}).join("") : `<div class="empty-inline">暂无健康检查数据</div>`;
 }
 
 function renderMiniList(id, warnings, errors) {
@@ -435,7 +434,7 @@ function renderMiniList(id, warnings, errors) {
   ];
   $(id).innerHTML = items.length ? items.map((item) => `
     <div class="mini-item"><span class="badge ${statusClass(item.type)}">${escapeHtml(statusLabel(item.type))}</span> ${escapeHtml(item.message)}</div>
-  `).join("") : `<div class="mini-item"><span class="badge ok">正常</span> No warnings</div>`;
+  `).join("") : `<div class="mini-item"><span class="badge ok">正常</span> 暂无异常</div>`;
 }
 
 async function loadContinuityContent() {
@@ -793,14 +792,22 @@ function renderMemoryManager() {
 
 function renderMemoryCandidates(candidates, editable) {
   $("memory-candidate-count").textContent = `${candidates.length} 条`;
+  const notice = $("memory-candidate-notice");
+  if (editable) {
+    notice.classList.add("hidden");
+    notice.textContent = "";
+  } else {
+    notice.classList.remove("hidden");
+    notice.innerHTML = `<strong>当前是只读模式</strong><span>请在 AstrBot 插件配置中开启 <code>memory_edit_enabled</code>，保存并重载 Dashboard 插件后即可审核。</span>`;
+  }
   $("memory-candidate-list").innerHTML = candidates.length ? candidates.map((item) => `
     <article class="content-item">
       <div class="card-heading"><strong>${escapeHtml(item.content || "暂无内容")}</strong><span class="badge info">${escapeHtml(memoryTypeLabel(item.suggested_type))}</span></div>
       <p>${escapeHtml(item.reason || "等待审核")}</p>
       <div class="meta">${escapeHtml(item.scope_label)} · 可信度 ${Math.round(Number(item.confidence || 0) * 100)}% · 重要性 ${Math.round(Number(item.importance || 0) * 100)}% · 稳定性 ${Math.round(Number(item.stability || 0) * 100)}% · 证据 ${escapeHtml(item.evidence_count || 1)} 次</div>
       <div class="candidate-actions">
-        <button class="secondary-button candidate-reject" type="button" data-candidate-id="${escapeHtml(item.id)}" data-scope-ref="${escapeHtml(item.scope_ref)}" ${editable ? "" : "disabled"}>拒绝</button>
-        <button class="primary-button candidate-approve" type="button" data-candidate-id="${escapeHtml(item.id)}" data-scope-ref="${escapeHtml(item.scope_ref)}" ${editable ? "" : "disabled"}>确认记住</button>
+        <button class="secondary-button candidate-reject${editable ? "" : " is-locked"}" type="button" data-candidate-id="${escapeHtml(item.id)}" data-scope-ref="${escapeHtml(item.scope_ref)}" data-editable="${editable}">拒绝</button>
+        <button class="primary-button candidate-approve${editable ? "" : " is-locked"}" type="button" data-candidate-id="${escapeHtml(item.id)}" data-scope-ref="${escapeHtml(item.scope_ref)}" data-editable="${editable}">确认记住</button>
       </div>
     </article>
   `).join("") : `<div class="empty-state simple-empty">暂无候选记忆</div>`;
@@ -1094,6 +1101,10 @@ $("memory-form-archive")?.addEventListener("click", () => {
 $("memory-candidate-list")?.addEventListener("click", (event) => {
   const button = event.target.closest(".candidate-approve, .candidate-reject");
   if (!button) return;
+  if (button.dataset.editable !== "true") {
+    showToast("当前是只读模式，请先在插件配置中开启 memory_edit_enabled", true);
+    return;
+  }
   const action = button.classList.contains("candidate-approve") ? "approve" : "reject";
   decideMemoryCandidate(button.dataset.candidateId, button.dataset.scopeRef, action)
     .catch((error) => showToast(error?.message || error, true));
