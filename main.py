@@ -64,7 +64,7 @@ except ImportError:  # pragma: no cover - fallback for file-based plugin loaders
 
 
 PLUGIN_NAME = "astrbot_plugin_aling_life_dashboard"
-PLUGIN_VERSION = "0.3.1"
+PLUGIN_VERSION = "0.3.2"
 DEFAULT_CONFIG: dict[str, Any] = {
     "dashboard_enabled": False,
     "bind_host": "127.0.0.1",

@@ -51,7 +51,7 @@ class MemoryEditor:
             items: list[dict[str, Any]] = []
             candidates: list[dict[str, Any]] = []
             for scope_ref, (scope_id, scope) in scopes.items():
-                label = f"会话 {scope_ref[:8]}"
+                label = self._scope_label(scope_id, scope_ref)
                 for raw in scope.get("memories", []):
                     if isinstance(raw, dict):
                         items.append(self._public_item(raw, scope_ref, label))
@@ -70,10 +70,11 @@ class MemoryEditor:
                 "scopes": [
                     {
                         "ref": ref,
-                        "label": f"会话 {ref[:8]}",
+                        "label": self._scope_label(scope_id, ref),
+                        "is_test_account": self._is_test_scope(scope_id),
                         "item_count": len(scope.get("memories", [])),
                     }
-                    for ref, (_scope_id, scope) in scopes.items()
+                    for ref, (scope_id, scope) in scopes.items()
                 ],
                 "items": items,
                 "candidates": candidates,
@@ -112,13 +113,13 @@ class MemoryEditor:
             item["expires_at"] = self._expires_after_days(item["ttl_days"])
             scope.setdefault("memories", []).append(item)
             self._save(root)
-            return self._public_item(item, scope_ref, f"会话 {scope_ref[:8]}")
+            return self._public_item(item, scope_ref, self._scope_label(scope_id, scope_ref))
 
     def update(self, memory_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_enabled()
         with self._lock:
             _path, root = self._load()
-            scope_ref, _scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
+            scope_ref, scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
             item = self._find_item(scope, memory_id)
             if "content" in payload:
                 item["content"] = self._content(payload.get("content"))
@@ -143,7 +144,7 @@ class MemoryEditor:
                 item["expires_at"] = self._expires_after_days(item["ttl_days"])
             item["updated_at"] = self._now()
             self._save(root)
-            return self._public_item(item, scope_ref, f"会话 {scope_ref[:8]}")
+            return self._public_item(item, scope_ref, self._scope_label(scope_id, scope_ref))
 
     def set_status(self, memory_id: str, payload: dict[str, Any], status: str) -> dict[str, Any]:
         self._require_enabled()
@@ -151,18 +152,18 @@ class MemoryEditor:
             raise MemoryEditorError("invalid_status", "不支持的记忆状态。")
         with self._lock:
             _path, root = self._load()
-            scope_ref, _scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
+            scope_ref, scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
             item = self._find_item(scope, memory_id)
             item["status"] = status
             item["updated_at"] = self._now()
             self._save(root)
-            return self._public_item(item, scope_ref, f"会话 {scope_ref[:8]}")
+            return self._public_item(item, scope_ref, self._scope_label(scope_id, scope_ref))
 
     def approve_candidate(self, candidate_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_enabled()
         with self._lock:
             _path, root = self._load()
-            scope_ref, _scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
+            scope_ref, scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
             candidate = self._find_candidate(scope, candidate_id)
             if self._sensitivity(candidate.get("sensitivity", "low")) == "high":
                 raise MemoryEditorError("sensitive_candidate", "高敏感候选不能转为长期记忆，请直接拒绝。")
@@ -194,18 +195,67 @@ class MemoryEditor:
             scope.setdefault("memories", []).append(item)
             scope["candidates"] = [row for row in scope.get("candidates", []) if row is not candidate]
             self._save(root)
-            return self._public_item(item, scope_ref, f"会话 {scope_ref[:8]}")
+            return self._public_item(item, scope_ref, self._scope_label(scope_id, scope_ref))
 
     def reject_candidate(self, candidate_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_enabled()
         with self._lock:
             _path, root = self._load()
-            scope_ref, _scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
+            scope_ref, scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
             candidate = self._find_candidate(scope, candidate_id)
-            public = self._public_candidate(candidate, scope_ref, f"会话 {scope_ref[:8]}")
+            public = self._public_candidate(candidate, scope_ref, self._scope_label(scope_id, scope_ref))
             scope["candidates"] = [row for row in scope.get("candidates", []) if row is not candidate]
             self._save(root)
             return public
+
+    def clear_test_scopes(self) -> dict[str, int]:
+        self._require_enabled()
+        with self._lock:
+            _path, root = self._load()
+            scopes = root.get("scopes", {})
+            test_scope_ids = [scope_id for scope_id in scopes if self._is_test_scope(str(scope_id))]
+            memory_count = 0
+            candidate_count = 0
+            for scope_id in test_scope_ids:
+                scope = scopes.get(scope_id, {})
+                if isinstance(scope, dict):
+                    memory_count += len(scope.get("memories", []))
+                    candidate_count += len(scope.get("candidates", []))
+                scopes.pop(scope_id, None)
+            if test_scope_ids:
+                self._save(root)
+            related_scope_count = 0
+            memory_dir = _path.parent
+            for filename, container_key in (
+                ("context_summaries.json", "scopes"),
+                ("flashback_state.json", "scopes"),
+                ("user_life_mirror.json", "scopes"),
+                ("recent_trace.json", "sessions"),
+            ):
+                related_scope_count += self._clear_test_container(memory_dir / filename, container_key)
+            return {
+                "scope_count": len(test_scope_ids),
+                "memory_count": memory_count,
+                "candidate_count": candidate_count,
+                "related_scope_count": related_scope_count,
+            }
+
+    def _clear_test_container(self, path: Path, container_key: str) -> int:
+        if not path.exists():
+            return 0
+        try:
+            root = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return 0
+        container = root.get(container_key, {}) if isinstance(root, dict) else {}
+        if not isinstance(container, dict):
+            return 0
+        keys = [key for key in container if self._is_test_scope(str(key))]
+        for key in keys:
+            container.pop(key, None)
+        if keys:
+            self._save_path(path, root)
+        return len(keys)
 
     def preview(self, payload: dict[str, Any]) -> dict[str, Any]:
         query = self._short_text(payload.get("text"), 800)
@@ -213,7 +263,7 @@ class MemoryEditor:
             raise MemoryEditorError("empty_query", "请输入要测试的消息。")
         with self._lock:
             _path, root = self._load()
-            scope_ref, _scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
+            scope_ref, scope_id, scope = self._resolve_scope(root, payload.get("scope_ref"))
             scored: list[tuple[float, dict[str, Any], list[str]]] = []
             query_lower = query.lower()
             query_bigrams = self._bigrams(query_lower)
@@ -242,7 +292,7 @@ class MemoryEditor:
             scored.sort(key=lambda row: row[0], reverse=True)
             matches = []
             for score, item, reasons in scored[:5]:
-                public = self._public_item(item, scope_ref, f"会话 {scope_ref[:8]}")
+                public = self._public_item(item, scope_ref, self._scope_label(scope_id, scope_ref))
                 public["match_score"] = round(score, 2)
                 public["match_reason"] = "；".join(reasons)
                 matches.append(public)
@@ -274,6 +324,9 @@ class MemoryEditor:
         path = self.path_provider()
         if path is None or path.name != "memory_store.json":
             raise MemoryEditorError("store_missing", "记忆文件已不可用。", 503)
+        self._save_path(path, root)
+
+    def _save_path(self, path: Path, root: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         backup = path.with_suffix(path.suffix + ".bak")
         temp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
@@ -305,6 +358,15 @@ class MemoryEditor:
             ref = hashlib.sha256(str(scope_id).encode("utf-8")).hexdigest()[:16]
             result[ref] = (str(scope_id), scope)
         return result
+
+    @staticmethod
+    def _is_test_scope(scope_id: str) -> bool:
+        return str(scope_id).startswith("test-account:")
+
+    @classmethod
+    def _scope_label(cls, scope_id: str, scope_ref: str) -> str:
+        prefix = "测试空间" if cls._is_test_scope(scope_id) else "会话"
+        return f"{prefix} {scope_ref[:8]}"
 
     def _resolve_scope(self, root: dict[str, Any], requested: Any) -> tuple[str, str, dict[str, Any]]:
         scopes = self._scope_map(root)

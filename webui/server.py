@@ -14,6 +14,7 @@ from quart import Quart, jsonify, redirect, request, send_from_directory
 
 from .auth import DashboardAuth, clear_login_cookie, login_redirect, set_login_cookie
 from .memory_editor import MemoryEditor, MemoryEditorError
+from .test_space import TestSpaceCleaner
 
 
 class LifeDashboardWebUI:
@@ -176,6 +177,7 @@ class LifeDashboardWebUI:
             enabled_provider=lambda: bool(self.settings_provider().get("memory_edit_enabled", False)),
             invalidate_callback=self.data_reader.invalidate_cache,
         )
+        test_space_cleaner = TestSpaceCleaner(self.data_reader.plugin_data_dirs)
 
         @app.get("/")
         async def index():
@@ -359,6 +361,13 @@ class LifeDashboardWebUI:
             except MemoryEditorError as exc:
                 return _memory_error(exc)
 
+        @app.get("/api/test-space/status")
+        async def api_test_space_status():
+            guard = await _api_guard()
+            if guard:
+                return guard
+            return jsonify(test_space_cleaner.snapshot())
+
         @app.post("/api/memory-candidates/<candidate_id>/approve")
         async def api_memory_candidate_approve(candidate_id: str):
             guard = await _memory_write_guard()
@@ -388,6 +397,22 @@ class LifeDashboardWebUI:
                 return jsonify({"ok": False, "error": "invalid_request", "message": "请求格式不正确。"}), 400
             try:
                 return jsonify(memory_editor.preview(await _memory_payload()))
+            except MemoryEditorError as exc:
+                return _memory_error(exc)
+
+        @app.post("/api/test-space/reset-memory")
+        async def api_test_space_reset_memory():
+            guard = await _memory_write_guard()
+            if guard:
+                return guard
+            payload = await _memory_payload()
+            if payload.get("confirmation") != "RESET_TEST_MEMORY":
+                return jsonify({"ok": False, "error": "confirmation_required", "message": "需要确认后才能清空测试记忆。"}), 400
+            try:
+                removed = memory_editor.clear_test_scopes()
+                removed.update(test_space_cleaner.clear())
+                self.data_reader.invalidate_cache()
+                return jsonify({"ok": True, "removed": removed})
             except MemoryEditorError as exc:
                 return _memory_error(exc)
 

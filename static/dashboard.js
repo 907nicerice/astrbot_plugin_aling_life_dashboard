@@ -1,4 +1,6 @@
 const state = {
+  dashboardMode: "formal",
+  lastStatus: null,
   refreshIntervalSeconds: 10,
   timer: null,
   continuityContent: null,
@@ -7,6 +9,15 @@ const state = {
   selectedMemory: null,
   toastTimer: null,
 };
+
+try {
+  const requestedMode = new URLSearchParams(window.location.search).get("mode");
+  state.dashboardMode = requestedMode === "test" || requestedMode === "formal"
+    ? requestedMode
+    : localStorage.getItem("aling-dashboard-mode") === "test" ? "test" : "formal";
+} catch (_error) {
+  state.dashboardMode = "formal";
+}
 
 const MEMORY_TYPE_LABELS = {
   small_memory: "小记忆",
@@ -141,6 +152,7 @@ function continuityCheckCopy(check) {
 }
 
 function renderStatus(status) {
+  state.lastStatus = status;
   const interval = Math.max(3, Number(status.refresh_interval_seconds) || 10);
   if (interval !== state.refreshIntervalSeconds) {
     state.refreshIntervalSeconds = interval;
@@ -154,9 +166,15 @@ function renderStatus(status) {
     ["当前时间", formatDate(status.now), "green", "Dashboard 本地时间"],
     ["WebUI", status.webui === "running" ? "运行中" : status.webui, statusColor(status.webui), `每 ${state.refreshIntervalSeconds} 秒刷新`],
     ["生活状态", status.shared_life_context_found ? "已连接" : "未连接", statusColor(status.shared_life_context_found), "当天生活舞台"],
-    ["空间链路", status.bridge_enabled ? "桥接已启用" : "桥接未启用", status.bridge_enabled ? "green" : "yellow", status.dry_run ? "演练模式，不会真实发送" : (status.qzone_bridge_found ? "正式模式" : "未发现桥接插件")],
-    ["发送组件", status.qzone_auto_like_found ? "已发现" : "未发现", statusColor(status.qzone_auto_like_found), "QQ 空间执行端"],
   ];
+  if (state.dashboardMode === "formal") {
+    cards.push(
+      ["空间链路", status.bridge_enabled ? "桥接已启用" : "桥接未启用", status.bridge_enabled ? "green" : "yellow", status.dry_run ? "演练模式，不会真实发送" : (status.qzone_bridge_found ? "正式模式" : "未发现桥接插件")],
+      ["发送组件", status.qzone_auto_like_found ? "已发现" : "未发现", statusColor(status.qzone_auto_like_found), "QQ 空间执行端"],
+    );
+  } else {
+    cards.push(["当前空间", "测试沙盒", "green", "正式记忆不会被读取或修改"]);
+  }
   $("status-cards").innerHTML = cards.map(([label, value, color, note]) => `
     <article class="status-card ${color}">
       <div class="label">${escapeHtml(label)}</div>
@@ -303,7 +321,7 @@ function renderMemory(memory) {
 
 function renderHealth(health) {
   const strip = $("warning-strip");
-  const warnings = health.warnings || [];
+  const warnings = (health.warnings || []).filter((item) => state.dashboardMode === "formal" || item.kind !== "bridge_errors");
   if (!warnings.length) {
     strip.classList.add("hidden");
     strip.innerHTML = "";
@@ -315,19 +333,21 @@ function renderHealth(health) {
 }
 
 async function loadAll() {
-  const [status, life, qzone, memory, health] = await Promise.all([
+  const [status, life, qzone, memory, health, testStatus] = await Promise.all([
     fetchJson("/api/status"),
     fetchJson("/api/life"),
-    fetchJson("/api/qzone"),
+    state.dashboardMode === "formal" ? fetchJson("/api/qzone") : Promise.resolve(null),
     fetchJson("/api/memory"),
     fetchJson("/api/health"),
+    fetchJson("/api/test-space/status"),
   ]);
   renderStatus(status);
   renderLife(life);
   renderContinuity(status.continuity || {});
-  renderQzone(qzone);
+  if (qzone) renderQzone(qzone);
   renderMemory(memory);
   renderHealth(health);
+  renderTestSpaceStatus(testStatus);
   $("last-refresh").textContent = `最近刷新：${new Date().toLocaleString()}`;
   if (!state.continuityContentLoaded) {
     loadContinuityContent().catch(showError);
@@ -425,6 +445,11 @@ function renderContinuity(continuity) {
       <span class="badge ${statusClass(check.status)}">${escapeHtml(statusLabel(check.status))}</span>
     </div>
   `}).join("") : `<div class="empty-inline">暂无健康检查数据</div>`;
+}
+
+function renderTestSpaceStatus(payload) {
+  if ($("test-inner-state-count")) $("test-inner-state-count").textContent = String(payload?.inner_state_files || 0);
+  if ($("test-companion-state-count")) $("test-companion-state-count").textContent = String(payload?.companion_sessions || 0);
 }
 
 function renderMiniList(id, warnings, errors) {
@@ -733,17 +758,20 @@ async function loadMemoryManager() {
   state.memoryManager = payload;
   populateMemoryScopes(payload.scopes || []);
   renderMemoryManager();
+  const testScopeCount = (payload.scopes || []).filter((scope) => scope.is_test_account).length;
+  if ($("test-memory-scope-count")) $("test-memory-scope-count").textContent = String(testScopeCount);
 }
 
 function populateMemoryScopes(scopes) {
+  const visibleScopes = scopes.filter((scope) => Boolean(scope.is_test_account) === (state.dashboardMode === "test"));
   const filter = $("manager-scope-filter");
   const form = $("memory-form-scope");
   const filterValue = filter.value;
   const formValue = form.value;
-  filter.innerHTML = `<option value="">全部会话</option>${scopes.map((scope) => `
+  filter.innerHTML = `<option value="">${state.dashboardMode === "test" ? "全部测试空间" : "全部正式会话"}</option>${visibleScopes.map((scope) => `
     <option value="${escapeHtml(scope.ref)}">${escapeHtml(scope.label)} · ${escapeHtml(scope.item_count)} 条</option>
   `).join("")}`;
-  form.innerHTML = scopes.map((scope) => `
+  form.innerHTML = visibleScopes.map((scope) => `
     <option value="${escapeHtml(scope.ref)}">${escapeHtml(scope.label)} · ${escapeHtml(scope.item_count)} 条</option>
   `).join("");
   if ([...filter.options].some((option) => option.value === filterValue)) filter.value = filterValue;
@@ -756,16 +784,20 @@ function renderMemoryManager() {
   const scope = $("manager-scope-filter").value;
   const typeFilter = $("manager-type-filter").value;
   const statusFilter = $("manager-status-filter").value;
+  const visibleScopeRefs = new Set((payload.scopes || [])
+    .filter((entry) => Boolean(entry.is_test_account) === (state.dashboardMode === "test"))
+    .map((entry) => entry.ref));
   const rows = (payload.items || []).filter((item) => {
     const haystack = `${item.content || ""} ${(item.tags || []).join(" ")} ${item.use_rule || ""}`.toLowerCase();
-    return (!query || haystack.includes(query))
+    return visibleScopeRefs.has(item.scope_ref)
+      && (!query || haystack.includes(query))
       && (!scope || item.scope_ref === scope)
       && (!typeFilter || item.type === typeFilter)
       && (!statusFilter || item.status === statusFilter);
   });
 
   $("memory-count").textContent = `共 ${rows.length} 条`;
-  $("new-memory").disabled = !payload.editable || !(payload.scopes || []).length;
+  $("new-memory").disabled = !payload.editable || !visibleScopeRefs.size;
   const notice = $("memory-manager-notice");
   if (!payload.editable) {
     notice.textContent = "当前为只读模式。如需编辑，请在插件配置中开启 memory_edit_enabled。";
@@ -785,9 +817,28 @@ function renderMemoryManager() {
     </tr>
   `).join("") : `<tr><td colspan="6" class="table-empty">没有符合条件的记忆</td></tr>`;
   renderMemoryCandidates(
-    (payload.candidates || []).filter((item) => !scope || item.scope_ref === scope),
+    (payload.candidates || []).filter((item) => visibleScopeRefs.has(item.scope_ref) && (!scope || item.scope_ref === scope)),
     Boolean(payload.editable),
   );
+}
+
+function setDashboardMode(mode) {
+  state.dashboardMode = mode === "test" ? "test" : "formal";
+  document.body.dataset.dashboardMode = state.dashboardMode;
+  const isTest = state.dashboardMode === "test";
+  $("mode-formal")?.classList.toggle("active", !isTest);
+  $("mode-test")?.classList.toggle("active", isTest);
+  $("mode-formal")?.setAttribute("aria-pressed", String(!isTest));
+  $("mode-test")?.setAttribute("aria-pressed", String(isTest));
+  $("test-space-banner")?.classList.toggle("hidden", !isTest);
+  if ($("dashboard-title")) $("dashboard-title").textContent = isTest ? "阿绫测试控制台" : "阿绫控制台";
+  try { localStorage.setItem("aling-dashboard-mode", state.dashboardMode); } catch (_error) { /* ignore */ }
+  if (state.memoryManager) {
+    populateMemoryScopes(state.memoryManager.scopes || []);
+    renderMemoryManager();
+  }
+  if (state.lastStatus) renderStatus(state.lastStatus);
+  if (isTest && location.hash === "#qzone") location.hash = "#memory-manager";
 }
 
 function renderMemoryCandidates(candidates, editable) {
@@ -1046,7 +1097,31 @@ function escapeHtml(value) {
   }[char]));
 }
 
+setDashboardMode(state.dashboardMode);
 loadAll().catch(showError);
+
+$("mode-formal")?.addEventListener("click", () => {
+  setDashboardMode("formal");
+  loadAll().catch(showError);
+});
+$("mode-test")?.addEventListener("click", () => {
+  setDashboardMode("test");
+  loadAll().catch(showError);
+});
+$("reset-test-memory")?.addEventListener("click", () => {
+  if (!window.confirm("将清空测试空间中的长期记忆、候选、摘要、短期余波和陪伴状态。正式数据不会受影响。确定继续吗？")) return;
+  fetchApi("/api/test-space/reset-memory", {
+    method: "POST",
+    body: JSON.stringify({ confirmation: "RESET_TEST_MEMORY" }),
+  })
+    .then((payload) => {
+      const removed = payload.removed || {};
+      const shortStateCount = Number(removed.inner_state_files || 0) + Number(removed.companion_sessions || 0);
+      showToast(`已清空 ${removed.memory_count || 0} 条测试记忆和 ${shortStateCount} 份短期状态`);
+      return refreshMemoryViews();
+    })
+    .catch((error) => showToast(error?.message || error, true));
+});
 
 $("refresh-continuity-content")?.addEventListener("click", () => {
   loadContinuityContent().catch(showError);

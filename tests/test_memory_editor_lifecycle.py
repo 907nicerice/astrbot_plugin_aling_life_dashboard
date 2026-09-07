@@ -10,6 +10,61 @@ from astrbot_plugin_aling_life_dashboard.webui.memory_editor import MemoryEditor
 
 
 class MemoryEditorLifecycleTests(unittest.TestCase):
+    def test_test_scope_is_labeled_without_exposing_account_id(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "memory_store.json"
+            path.write_text(
+                json.dumps({"version": 2, "scopes": {"test-account:masked:private:test": {"memories": [], "candidates": []}}}),
+                encoding="utf-8",
+            )
+            scope = MemoryEditor(lambda: path, lambda: False).snapshot()["scopes"][0]
+            self.assertTrue(scope["is_test_account"])
+            self.assertTrue(scope["label"].startswith("测试空间 "))
+            self.assertNotIn("masked", scope["label"])
+
+    def test_clear_test_scopes_keeps_formal_data(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "memory_store.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "scopes": {
+                            "private:formal": {"memories": [{"id": "formal"}], "candidates": []},
+                            "test-account:masked:private:test": {
+                                "memories": [{"id": "test"}],
+                                "candidates": [{"id": "candidate"}],
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            summary_path = Path(directory) / "context_summaries.json"
+            summary_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "scopes": {
+                            "private:formal": {"summaries": [{"id": "formal-summary"}]},
+                            "test-account:masked:private:test": {"summaries": [{"id": "test-summary"}]},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            editor = MemoryEditor(lambda: path, lambda: True)
+            removed = editor.clear_test_scopes()
+            self.assertEqual(
+                removed,
+                {"scope_count": 1, "memory_count": 1, "candidate_count": 1, "related_scope_count": 1},
+            )
+            snapshot = editor.snapshot()
+            self.assertEqual(snapshot["scope_count"], 1)
+            self.assertEqual(snapshot["items"][0]["id"], "formal")
+            summary_scopes = json.loads(summary_path.read_text(encoding="utf-8"))["scopes"]
+            self.assertEqual(set(summary_scopes), {"private:formal"})
+
     def test_ttl_edit_restarts_expiration_and_keeps_lifecycle_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "memory_store.json"

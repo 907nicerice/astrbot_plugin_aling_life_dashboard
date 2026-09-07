@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>阿绫控制台</title>
-  <link rel="stylesheet" href="/static/dashboard.css?v=0.3.1">
+  <link rel="stylesheet" href="/static/dashboard.css?v=0.3.2">
 </head>
 <body>
   <div class="app-shell">
@@ -17,9 +17,9 @@
         <a class="active" href="#overview"><span class="nav-mark">⌂</span>系统概览</a>
         <a href="#life"><span class="nav-mark">⌁</span>今日状态</a>
         <a href="#memory-manager"><span class="nav-mark">◉</span>记忆管理</a>
-        <a href="#continuity"><span class="nav-mark">◷</span>连续性状态</a>
-        <a href="#qzone"><span class="nav-mark">☆</span>QQ 空间</a>
-        <a href="#diagnostics"><span class="nav-mark">◇</span>诊断信息</a>
+        <a class="formal-only" href="#continuity"><span class="nav-mark">◷</span>连续性状态</a>
+        <a class="formal-only" href="#qzone"><span class="nav-mark">☆</span>QQ 空间</a>
+        <a class="formal-only" href="#diagnostics"><span class="nav-mark">◇</span>诊断信息</a>
       </nav>
       <div class="sidebar-note">
         <span class="status-dot"></span>
@@ -29,8 +29,12 @@
 
     <div class="workspace">
       <header class="topbar">
-        <div><h1>阿绫控制台</h1><p id="last-refresh">最近刷新：-</p></div>
+        <div><h1 id="dashboard-title">阿绫控制台</h1><p id="last-refresh">最近刷新：-</p></div>
         <div class="topbar-actions">
+          <div class="mode-switch" role="group" aria-label="切换正式或测试空间">
+            <button id="mode-formal" class="mode-button active" type="button" aria-pressed="true">正式</button>
+            <button id="mode-test" class="mode-button" type="button" aria-pressed="false">测试</button>
+          </div>
           <span class="system-health"><span class="status-dot"></span>系统在线</span>
           <button id="refresh-dashboard" class="secondary-button" type="button">刷新</button>
           <form action="/logout" method="post"><button class="ghost-button" type="submit">退出</button></form>
@@ -38,11 +42,25 @@
       </header>
 
       <main>
+        <section id="test-space-banner" class="test-space-banner hidden" aria-live="polite">
+          <div><span class="eyebrow">Test sandbox</span><strong>测试空间</strong><p>测试账号的记忆与连续性状态独立保存；此视图不提供 QQ 空间功能。</p></div>
+          <div class="test-space-actions"><span class="badge info">与正式数据隔离</span><button id="reset-test-memory" class="danger-button" type="button">清空测试数据</button></div>
+        </section>
         <section id="warning-strip" class="warning-strip hidden"></section>
 
         <section id="overview" class="page-section">
           <div class="section-heading"><div><span class="eyebrow">Overview</span><h2>系统概览</h2></div><p>关键运行状态与安全模式</p></div>
           <div class="grid status-grid" id="status-cards"></div>
+        </section>
+
+        <section id="test-overview" class="page-section test-only">
+          <div class="section-heading"><div><span class="eyebrow">Sandbox health</span><h2>测试数据状态</h2></div><p>这里只统计测试命名空间，不包含正式账号</p></div>
+          <div class="grid status-grid">
+            <article class="status-card green"><div class="label">长期记忆空间</div><div id="test-memory-scope-count" class="value">0</div><div class="status-note">独立记忆、候选、摘要与 Mirror</div></article>
+            <article class="status-card green"><div class="label">短期余波状态</div><div id="test-inner-state-count" class="value">0</div><div class="status-note">Inner Continuity 独立文件</div></article>
+            <article class="status-card green"><div class="label">陪伴分析状态</div><div id="test-companion-state-count" class="value">0</div><div class="status-note">Companion Support 独立会话</div></article>
+            <article class="status-card yellow"><div class="label">生活舞台</div><div class="value">共享只读</div><div class="status-note">可以读取，不允许测试账号修改</div></article>
+          </div>
         </section>
 
         <section id="life" class="page-section">
@@ -90,7 +108,7 @@
           </article>
         </section>
 
-        <section id="continuity" class="page-section">
+        <section id="continuity" class="page-section formal-only">
           <div class="section-heading"><div><span class="eyebrow">Continuity</span><h2>连续性状态</h2></div><p>SLC、短期余波与长期记忆的协作关系</p></div>
           <div class="grid continuity-grid">
             <article class="card span-two">
@@ -129,7 +147,7 @@
           </details>
         </section>
 
-        <section id="qzone" class="page-section">
+        <section id="qzone" class="page-section formal-only">
           <div class="section-heading"><div><span class="eyebrow">Qzone</span><h2>QQ 空间状态</h2></div><p>触发窗口、发送链路与最近历史</p></div>
           <div class="grid two">
             <article class="card"><h3>刷新计划</h3><div class="panel-stack" id="refresh-countdown"></div></article>
@@ -176,6 +194,6 @@
   </aside>
 
   <div id="dashboard-toast" class="toast hidden" role="status"></div>
-  <script src="/static/dashboard.js?v=0.3.1"></script>
+  <script src="/static/dashboard.js?v=0.3.2"></script>
 </body>
 </html>

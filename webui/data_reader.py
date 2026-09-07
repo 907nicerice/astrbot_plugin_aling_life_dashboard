@@ -1803,6 +1803,10 @@ class DashboardDataReader:
                     result.append(resolved)
         return result
 
+    def plugin_data_dirs(self, plugin_name: str) -> list[Path]:
+        """Return sanitized candidate directories for narrowly scoped maintenance helpers."""
+        return self._candidate_plugin_dirs(plugin_name)
+
     def _shared_life_candidates(self, filename: str) -> list[Path]:
         paths: list[Path] = []
         for directory in self._candidate_plugin_dirs(SHARED_PLUGIN_NAME):
